@@ -1,0 +1,3 @@
+[submodule "third_party/thorvg"]
+	path = third_party/thorvg
+	url = https://github.com/thorvg/thorvg
