@@ -1,0 +1,138 @@
+name: linux-build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-22.04
+    env:
+      VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+      VCPKG_TARGET_TRIPLET: x64-linux
+      VCPKG_BINARY_SOURCES: "clear;files,${{ github.workspace }}/vcpkg-cache,readwrite"
+      VCPKG_BUILD_TYPE: release
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Init ThorVG submodule
+        run: git submodule update --init third_party/thorvg
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake \
+            ninja-build \
+            pkg-config \
+            python3 \
+            meson \
+            curl \
+            unzip \
+            autoconf \
+            autoconf-archive \
+            automake \
+            libtool \
+            libtool-bin \
+            libsdl2-dev \
+            libgl1-mesa-dev \
+            libegl1-mesa-dev \
+            libx11-dev \
+            libxrandr-dev \
+            libxinerama-dev \
+            libxcursor-dev \
+            libxi-dev \
+            libxext-dev \
+            libxfixes-dev
+
+      - name: Verify autotools
+        run: |
+          set -e
+          command -v autoconf
+          command -v automake
+          command -v libtoolize
+          ls -la /usr/share/aclocal | head -n 20
+          autoconf --version
+          automake --version
+          libtoolize --version
+
+      - name: Restore vcpkg cache
+        id: vcpkg-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: vcpkg-cache
+          key: vcpkg-${{ runner.os }}-${{ env.VCPKG_TARGET_TRIPLET }}-skia-${{ hashFiles('CMakeLists.txt', '.github/workflows/linux.yml') }}
+          restore-keys: |
+            vcpkg-${{ runner.os }}-${{ env.VCPKG_TARGET_TRIPLET }}-skia-
+
+      - name: Install vcpkg + Skia
+        id: vcpkg_install
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
+          "$VCPKG_ROOT/bootstrap-vcpkg.sh"
+          "$VCPKG_ROOT/vcpkg" install skia --triplet "$VCPKG_TARGET_TRIPLET"
+
+      - name: Save vcpkg cache
+        if: always() && steps.vcpkg_install.outcome == 'success' && steps.vcpkg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: vcpkg-cache
+          key: vcpkg-${{ runner.os }}-${{ env.VCPKG_TARGET_TRIPLET }}-skia-${{ hashFiles('CMakeLists.txt', '.github/workflows/linux.yml') }}
+
+      - name: Fetch wgpu-native
+        run: |
+          set -e
+          WGPU_VERSION=27.0.2.0
+          WGPU_URL="https://github.com/gfx-rs/wgpu-native/releases/download/v${WGPU_VERSION}/wgpu-linux-x86_64-release.zip"
+          WGPU_ROOT="${GITHUB_WORKSPACE}/third_party/wgpu-native"
+          mkdir -p "$WGPU_ROOT"
+          curl -L "$WGPU_URL" -o /tmp/wgpu.zip
+          unzip -q /tmp/wgpu.zip -d "$WGPU_ROOT"
+
+          WGPU_LIB_PATH="$(find "$WGPU_ROOT" -name 'libwgpu_native.so' -o -name 'libwgpu_native.a' | head -n 1)"
+          if [ -z "$WGPU_LIB_PATH" ]; then
+            echo "wgpu-native library not found"
+            exit 1
+          fi
+
+          WGPU_INCLUDE_DIR="$(find "$WGPU_ROOT" -type d -name include | head -n 1)"
+          if [ -z "$WGPU_INCLUDE_DIR" ]; then
+            echo "wgpu-native include not found"
+            exit 1
+          fi
+
+          WGPU_LIB_DIR="$(dirname "$WGPU_LIB_PATH")"
+          WGPU_PKGCONFIG_DIR="${WGPU_LIB_DIR}/pkgconfig"
+          mkdir -p "$WGPU_PKGCONFIG_DIR"
+          cat > "${WGPU_PKGCONFIG_DIR}/wgpu_native.pc" <<EOF
+          prefix=${WGPU_ROOT}
+          libdir=${WGPU_LIB_DIR}
+          includedir=${WGPU_INCLUDE_DIR}
+
+          Name: wgpu_native
+          Description: wgpu-native
+          Version: ${WGPU_VERSION}
+          Libs: -L${WGPU_LIB_DIR} -lwgpu_native
+          Cflags: -I${WGPU_INCLUDE_DIR}
+          EOF
+
+          echo "WGPU_NATIVE_LIB=$WGPU_LIB_PATH" >> "$GITHUB_ENV"
+          echo "WGPU_NATIVE_INCLUDE=$WGPU_INCLUDE_DIR" >> "$GITHUB_ENV"
+          echo "WGPU_LIB=$WGPU_LIB_PATH" >> "$GITHUB_ENV"
+          echo "WGPU_INCLUDE=$WGPU_INCLUDE_DIR" >> "$GITHUB_ENV"
+          echo "PKG_CONFIG_PATH=$WGPU_PKGCONFIG_DIR:${PKG_CONFIG_PATH}" >> "$GITHUB_ENV"
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DRECTBENCH_BUILD_SKIA=OFF \
+            -DRECTBENCH_USE_VCPKG=ON \
+            -DRECTBENCH_BUILD_THORVG=ON \
+            -DWGPU_INCLUDE="$WGPU_INCLUDE" \
+            -DWGPU_LIB="$WGPU_LIB" \
+            -DWGPU_NATIVE_INCLUDE="$WGPU_NATIVE_INCLUDE" \
+            -DWGPU_NATIVE_LIB="$WGPU_NATIVE_LIB"
+
+      - name: Build
+        run: cmake --build build -j
