@@ -42,7 +42,7 @@ public:
       
       shape->fill(std::move(grad));
       static_shapes_.push_back(shape);
-      canvas->push(shape);
+      canvas->add(shape);
     }
 
     return true;

@@ -95,7 +95,7 @@ public:
       pic->transform(m);
 
       static_pictures_.push_back(pic);
-      canvas->push(pic);
+      canvas->add(pic);
     }
 
     return true;

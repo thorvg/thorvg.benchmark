@@ -337,7 +337,7 @@ struct GlWindow final : Window {
     }
 
     if (!verify(static_cast<tvg::GlCanvas *>(canvas)->target(
-            context, 0, static_cast<uint32_t>(width), static_cast<uint32_t>(height),
+            nullptr, nullptr, context, static_cast<int32_t>(0), static_cast<uint32_t>(width), static_cast<uint32_t>(height),
             tvg::ColorSpace::ABGR8888S),
                 "Failed to set GlCanvas target")) {
       return;
@@ -595,7 +595,7 @@ struct WgWindow final : Window {
 
     if (!verify(static_cast<tvg::WgCanvas *>(canvas)->target(
             use_external_device ? nullptr : wgpu.device, wgpu.instance,
-            wgpu.surface, static_cast<int>(width), static_cast<int>(height),
+            wgpu.surface, static_cast<uint32_t>(width), static_cast<uint32_t>(height),
             tvg::ColorSpace::ABGR8888S, 0),
                 "Failed to set WgCanvas target")) {
       return;

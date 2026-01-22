@@ -38,7 +38,7 @@ public:
       shape->strokeFill(rect.r, rect.g, rect.b, rect.a);
       shape->strokeWidth(3.0f + (rect.w + rect.h) * 0.02f);
       static_shapes_.push_back(shape);
-      canvas->push(shape);
+      canvas->add(shape);
     }
 
     return true;

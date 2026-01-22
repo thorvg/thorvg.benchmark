@@ -41,7 +41,7 @@ public:
       shape->strokeFill(255, 255, 255, 255);
       shape->strokeWidth(3.0f);
       static_shapes_.push_back(shape);
-      canvas->push(shape);
+      canvas->add(shape);
     }
 
     return true;

@@ -42,7 +42,7 @@ public:
       shape->appendCircle(circle.cx, circle.cy, circle.radius, circle.radius);
       shape->fill(circle.r, circle.g, circle.b, circle.a);
       static_shapes_.push_back(shape);
-      canvas->push(shape);
+      canvas->add(shape);
     }
 
     return true;

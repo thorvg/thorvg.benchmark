@@ -40,7 +40,7 @@ public:
       shape->appendRect(rect.x, rect.y, rect.w, rect.h);
       shape->fill(rect.r, rect.g, rect.b, rect.a);
       static_shapes_.push_back(shape);
-      canvas->push(shape);
+      canvas->add(shape);
     }
 
     return true;
