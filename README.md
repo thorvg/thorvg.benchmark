@@ -1,5 +1,9 @@
 # Rectbench: Skia vs ThorVG Benchmark
 
+<p align="center">
+  <img width="550" height="auto" src="https://github.com/thorvg/thorvg.site/blob/main/readme/logo/animated_brand.svg">
+</p>
+
 A benchmark comparing **Skia** and **ThorVG** rendering performance.
 
 ## Quick Start (macOS)
