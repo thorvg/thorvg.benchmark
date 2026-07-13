@@ -12,7 +12,7 @@
 // Skia headers
 #include "core/SkMatrix.h"
 #include "core/SkPaint.h"
-#include "effects/SkGradientShader.h"
+#include "effects/SkGradient.h"
 
 #include <cmath>
 #include <cstdint>
@@ -36,15 +36,17 @@ void draw_radial_gradient_circles_skia(
 
     // Create radial gradient for each circle
     SkPoint center = {circle.cx, circle.cy};
-    
-    SkColor colors[2] = {
-      SkColorSetARGB(circle.a, circle.r, circle.g, circle.b),
-      SkColorSetARGB(circle.a, 255 - circle.r, 255 - circle.g, 255 - circle.b)
+
+    SkColor4f colors[2] = {
+      SkColor4f::FromColor(SkColorSetARGB((U8CPU)circle.a, (U8CPU)circle.r, (U8CPU)circle.g, (U8CPU)circle.b)),
+      SkColor4f::FromColor(SkColorSetARGB((U8CPU)circle.a, 255 - (U8CPU)circle.r, 255 - (U8CPU)circle.g, 255 - (U8CPU)circle.b))
     };
 
     SkPaint paint;
     paint.setAntiAlias(true);
-    paint.setShader(SkGradientShader::MakeRadial(center, circle.radius, colors, nullptr, 2, SkTileMode::kClamp));
+
+    SkGradient gradient(SkGradient::Colors(SkSpan(colors, 2), SkTileMode::kClamp), {});
+    paint.setShader(SkShaders::RadialGradient(center, circle.radius, gradient));
 
     if (!apply_transforms) {
       canvas->drawCircle(circle.cx, circle.cy, circle.radius, paint);
