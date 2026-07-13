@@ -11,7 +11,7 @@ A benchmark comparing **Skia** and **ThorVG** rendering performance.
 ### 1. Clone & Initialize
 
 ```bash
-git clone --recurse-submodules <this-repo>
+git clone <this-repo>
 cd thorvg.benchmark
 ```
 
@@ -22,9 +22,14 @@ cd thorvg.benchmark
 brew install cmake ninja meson wgpu-native libomp python3
 
 # vcpkg (one-time setup)
-git clone https://github.com/microsoft/vcpkg.git ~/vcpkg
-~/vcpkg/bootstrap-vcpkg.sh
-~/vcpkg/vcpkg install skia sdl2 --triplet arm64-osx
+git clone https://github.com/microsoft/vcpkg.git
+./vcpkg/bootstrap-vcpkg.sh
+./vcpkg/vcpkg install skia sdl2 --triplet arm64-osx
+
+# thorvg (checkout to a specific tag for testing)
+git clone https://github.com/thorvg/thorvg.git
+./thorvg/meson setup build -Dloaders=all -Dengines=all
+./thorvg/ninja -C build install
 ```
 
 ### 3. Build
@@ -205,9 +210,14 @@ sudo apt-get install -y \
   libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev libxfixes-dev
 
 # vcpkg + Skia
-git clone https://github.com/microsoft/vcpkg.git ~/vcpkg
-~/vcpkg/bootstrap-vcpkg.sh
-~/vcpkg/vcpkg install skia --triplet x64-linux
+git clone https://github.com/microsoft/vcpkg.git
+./vcpkg/bootstrap-vcpkg.sh
+./vcpkg/vcpkg install skia --triplet x64-linux
+
+# thorvg (checkout to a specific tag for testing)
+git clone https://github.com/thorvg/thorvg.git
+./thorvg/meson setup build -Dloaders=all -Dengines=all
+./thorvg/ninja -C build install
 ```
 
 ### Build
@@ -228,6 +238,5 @@ rm -rf build
 ## Notes
 
 - **Skia**: Installed via vcpkg
-- **ThorVG**: Built from the `third_party/thorvg` submodule
-- **wgpu-native**: Homebrew (macOS) / manual download (Linux)
-- Run `git submodule update --init --recursive` after `git pull` to sync submodules
+- **ThorVG**: Built from the `thorvg` [repo](https://github.com/thorvg/thorvg)
+- **wgpu-native**: See the [guide](https://github.com/thorvg/thorvg/wiki/WebGPU-Engine-Development)

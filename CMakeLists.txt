@@ -10,94 +10,144 @@ include(ExternalProject)
 # =============================================================================
 # Options
 # =============================================================================
-option(RECTBENCH_BUILD_THORVG "Build ThorVG from source" ON)
+
+option(
+    RECTBENCH_BUILD_THORVG
+    "Build ThorVG from source instead of using pkg-config"
+    OFF
+)
 
 # =============================================================================
 # Find Dependencies
 # =============================================================================
+
 find_package(PkgConfig REQUIRED)
 
-# --- Skia (vcpkg) ---
+# -----------------------------------------------------------------------------
+# Skia
+# -----------------------------------------------------------------------------
+
 find_package(unofficial-skia CONFIG QUIET)
+
 if(unofficial-skia_FOUND)
     set(SKIA_LIBS unofficial::skia::skia)
 else()
     message(FATAL_ERROR
-        "Skia not found. Install via vcpkg:\n"
+        "Skia not found.\n"
+        "Install it with:\n"
         "  ~/vcpkg/vcpkg install skia sdl2 --triplet arm64-osx\n"
-        "Then configure with:\n"
-        "  cmake -DCMAKE_TOOLCHAIN_FILE=~/vcpkg/scripts/buildsystems/vcpkg.cmake ...")
+        "Then configure CMake with:\n"
+        "  -DCMAKE_TOOLCHAIN_FILE=~/vcpkg/scripts/buildsystems/vcpkg.cmake"
+    )
 endif()
 
-# --- SDL2 ---
-pkg_check_modules(SDL2 IMPORTED_TARGET sdl2)
-if(NOT SDL2_FOUND)
+# -----------------------------------------------------------------------------
+# SDL2
+# -----------------------------------------------------------------------------
+
+pkg_check_modules(SDL2 QUIET IMPORTED_TARGET sdl2)
+
+if(SDL2_FOUND)
+    set(SDL2_LIBS PkgConfig::SDL2)
+else()
     find_package(SDL2 CONFIG REQUIRED)
+
     if(TARGET SDL2::SDL2)
         set(SDL2_LIBS SDL2::SDL2)
+    elseif(TARGET SDL2::SDL2-static)
+        set(SDL2_LIBS SDL2::SDL2-static)
     else()
-        message(FATAL_ERROR "SDL2 not found")
+        message(FATAL_ERROR "SDL2 target not found.")
     endif()
-else()
-    set(SDL2_LIBS PkgConfig::SDL2)
 endif()
 
-# --- WebGPU (wgpu-native via pkg-config) ---
+# -----------------------------------------------------------------------------
+# WebGPU
+# -----------------------------------------------------------------------------
+
 pkg_check_modules(WGPU REQUIRED IMPORTED_TARGET wgpu_native)
 set(WGPU_LIBS PkgConfig::WGPU)
 
-# --- ThorVG ---
-set(DEPS_BUILD_DIR "${CMAKE_SOURCE_DIR}/build")
+# =============================================================================
+# ThorVG
+# =============================================================================
+
 if(RECTBENCH_BUILD_THORVG)
-    set(THORVG_LIB "${DEPS_BUILD_DIR}/thorvg/src/libthorvg-1.a")
-    set(THORVG_INCLUDE "${CMAKE_SOURCE_DIR}/third_party/thorvg/inc")
 
-    ExternalProject_Add(thorvg_build
-        SOURCE_DIR "${CMAKE_SOURCE_DIR}/third_party/thorvg"
-        CONFIGURE_COMMAND ""
-        BUILD_COMMAND "${CMAKE_SOURCE_DIR}/tools/build_thorvg.sh"
-        INSTALL_COMMAND ""
-        BUILD_ALWAYS ON
-        BUILD_BYPRODUCTS "${THORVG_LIB}"
+    # Build ThorVG from source using Meson.
+
+    set(THORVG_INSTALL_DIR "${CMAKE_BINARY_DIR}/thorvg-install")
+    set(THORVG_LIBRARY_DIR "${THORVG_INSTALL_DIR}/lib")
+
+    ExternalProject_Add(
+        thorvg_build
+
+        GIT_REPOSITORY https://github.com/thorvg/thorvg.git
+        GIT_TAG main
+        GIT_SHALLOW TRUE
+
+        PREFIX "${CMAKE_BINARY_DIR}/thorvg"
+
+        CONFIGURE_COMMAND
+            meson setup
+                <SOURCE_DIR>/build
+                <SOURCE_DIR>
+                --prefix=${THORVG_INSTALL_DIR}
+                --libdir=lib
+                --buildtype=release
+                -Ddefault_library=shared
+                -Dbindings=cpp
+                -Dloaders=all
+                -Dsavers=all
+
+        BUILD_COMMAND
+            meson compile -C <SOURCE_DIR>/build
+
+        INSTALL_COMMAND
+            meson install -C <SOURCE_DIR>/build
+
+        BUILD_BYPRODUCTS
+            "${THORVG_LIBRARY_DIR}/${CMAKE_SHARED_LIBRARY_PREFIX}thorvg${CMAKE_SHARED_LIBRARY_SUFFIX}"
     )
+
+    add_library(rectbench_thorvg UNKNOWN IMPORTED GLOBAL)
+
+    set_target_properties(rectbench_thorvg PROPERTIES
+        IMPORTED_LOCATION
+            "${THORVG_LIBRARY_DIR}/${CMAKE_SHARED_LIBRARY_PREFIX}thorvg${CMAKE_SHARED_LIBRARY_SUFFIX}"
+
+        INTERFACE_INCLUDE_DIRECTORIES
+            "${THORVG_INSTALL_DIR}/include"
+    )
+
+    add_dependencies(rectbench_thorvg thorvg_build)
+
+    set(THORVG_TARGET rectbench_thorvg)
+
 else()
-    set(THORVG_INCLUDE "${CMAKE_SOURCE_DIR}/third_party/thorvg/include" CACHE PATH "ThorVG include directory")
-    set(THORVG_LIB "${CMAKE_SOURCE_DIR}/third_party/thorvg/lib/macOS/libthorvg.a" CACHE FILEPATH "ThorVG library path")
-    if(NOT EXISTS "${THORVG_LIB}")
-        message(FATAL_ERROR "ThorVG library not found at ${THORVG_LIB}.")
-    endif()
-endif()
 
-# --- Image libraries for ThorVG ---
-pkg_check_modules(PNG IMPORTED_TARGET libpng)
-pkg_check_modules(TURBOJPEG IMPORTED_TARGET libturbojpeg)
-pkg_check_modules(WEBP IMPORTED_TARGET libwebp)
+    # Use an installed ThorVG package through pkg-config.
+    #
+    # If thorvg.pc is not installed in a standard location,
+    # add its directory to PKG_CONFIG_PATH.
+    #
+    # Example:
+    #
+    # export PKG_CONFIG_PATH=/path/to/thorvg/lib/pkgconfig:$PKG_CONFIG_PATH
+    #
 
-set(THORVG_IMAGE_LIBS "")
-if(PNG_FOUND)
-    list(APPEND THORVG_IMAGE_LIBS PkgConfig::PNG)
-endif()
-if(TURBOJPEG_FOUND)
-    list(APPEND THORVG_IMAGE_LIBS PkgConfig::TURBOJPEG)
-endif()
-if(WEBP_FOUND)
-    list(APPEND THORVG_IMAGE_LIBS PkgConfig::WEBP)
-endif()
+    pkg_check_modules(THORVG REQUIRED IMPORTED_TARGET thorvg-1)
 
-# --- OpenMP ---
-find_package(OpenMP QUIET)
-if(NOT OpenMP_CXX_FOUND AND APPLE)
-    set(LIBOMP_PREFIX "/opt/homebrew/opt/libomp" CACHE PATH "libomp prefix (Homebrew)")
-    if(EXISTS "${LIBOMP_PREFIX}/lib/libomp.dylib")
-        set(LIBOMP_INCLUDE "${LIBOMP_PREFIX}/include")
-        set(LIBOMP_LIB "${LIBOMP_PREFIX}/lib/libomp.dylib")
-    endif()
+    set(THORVG_TARGET PkgConfig::THORVG)
+
 endif()
 
 # =============================================================================
-# Framework Dependencies
+# Platform Frameworks
 # =============================================================================
+
 if(APPLE)
+
     set(SKIA_FRAMEWORKS
         "-framework CoreFoundation"
         "-framework CoreGraphics"
@@ -109,6 +159,7 @@ if(APPLE)
         "-framework AppKit"
         "-framework Foundation"
     )
+
     set(THORVG_FRAMEWORKS
         "-framework CoreGraphics"
         "-framework Metal"
@@ -116,82 +167,106 @@ if(APPLE)
         "-framework Foundation"
         "-framework AppKit"
     )
+
 else()
-    set(SKIA_FRAMEWORKS "")
-    set(THORVG_FRAMEWORKS "")
+
+    set(SKIA_FRAMEWORKS)
+    set(THORVG_FRAMEWORKS)
+
 endif()
 
 # =============================================================================
-# Common header-only library
+# Common Library
 # =============================================================================
+
 add_library(rectbench_common INTERFACE)
-target_include_directories(rectbench_common INTERFACE ${CMAKE_SOURCE_DIR}/src/common)
+
+target_include_directories(
+    rectbench_common
+    INTERFACE
+        ${CMAKE_SOURCE_DIR}/src/common
+)
 
 # =============================================================================
-# Helper function for Skia executables
+# Helper Functions
 # =============================================================================
+
+find_package(OpenGL REQUIRED)
+
 function(add_skia_benchmark NAME SOURCE)
+
     add_executable(${NAME} ${SOURCE})
-    target_link_libraries(${NAME} PRIVATE
-        rectbench_common
-        ${SKIA_LIBS}
-        ${SDL2_LIBS}
-        ${SKIA_FRAMEWORKS}
+
+    target_link_libraries(${NAME}
+        PRIVATE
+            rectbench_common
+            ${SKIA_LIBS}
+            ${SDL2_LIBS}
+            ${SKIA_FRAMEWORKS}
+            OpenGL::GL
     )
+
 endfunction()
 
-# =============================================================================
-# Helper function for ThorVG executables
-# =============================================================================
 function(add_thorvg_benchmark NAME SOURCE)
+
     add_executable(${NAME} ${SOURCE})
-    target_include_directories(${NAME} PRIVATE ${THORVG_INCLUDE})
-    target_link_libraries(${NAME} PRIVATE
-        rectbench_common
-        ${THORVG_LIB}
-        ${SDL2_LIBS}
-        ${THORVG_FRAMEWORKS}
-        ${THORVG_IMAGE_LIBS}
-        ${WGPU_LIBS}
+
+    target_link_libraries(${NAME}
+        PRIVATE
+            rectbench_common
+            ${THORVG_TARGET}
+            ${SDL2_LIBS}
+            ${WGPU_LIBS}
+            ${THORVG_FRAMEWORKS}
     )
+
     if(RECTBENCH_BUILD_THORVG)
         add_dependencies(${NAME} thorvg_build)
     endif()
-    # OpenMP
-    if(OpenMP_CXX_FOUND)
-        target_link_libraries(${NAME} PRIVATE OpenMP::OpenMP_CXX)
-    elseif(DEFINED LIBOMP_LIB)
-        target_include_directories(${NAME} PRIVATE ${LIBOMP_INCLUDE})
-        target_link_libraries(${NAME} PRIVATE ${LIBOMP_LIB})
-    endif()
+
 endfunction()
 
 # =============================================================================
 # Skia Benchmarks
 # =============================================================================
-add_skia_benchmark(rectbench_skia_sdl src/skia/rectbench_skia_sdl.cpp)
-add_skia_benchmark(circlebench_skia_sdl src/skia/circlebench_skia_sdl.cpp)
-add_skia_benchmark(strokebench_skia_sdl src/skia/strokebench_skia_sdl.cpp)
-add_skia_benchmark(imagebench_skia_sdl src/skia/imagebench_skia_sdl.cpp)
+
+add_skia_benchmark(rectbench_skia_sdl           src/skia/rectbench_skia_sdl.cpp)
+add_skia_benchmark(circlebench_skia_sdl         src/skia/circlebench_skia_sdl.cpp)
+add_skia_benchmark(strokebench_skia_sdl         src/skia/strokebench_skia_sdl.cpp)
+add_skia_benchmark(imagebench_skia_sdl          src/skia/imagebench_skia_sdl.cpp)
 add_skia_benchmark(lineargradientbench_skia_sdl src/skia/lineargradientbench_skia_sdl.cpp)
 add_skia_benchmark(radialgradientbench_skia_sdl src/skia/radialgradientbench_skia_sdl.cpp)
-add_skia_benchmark(strokerectbench_skia_sdl src/skia/strokerectbench_skia_sdl.cpp)
+add_skia_benchmark(strokerectbench_skia_sdl     src/skia/strokerectbench_skia_sdl.cpp)
 
 # =============================================================================
 # ThorVG Benchmarks
 # =============================================================================
-add_thorvg_benchmark(rectbench_thorvg_sdl src/thorvg/rectbench_thorvg_sdl.cpp)
-add_thorvg_benchmark(circlebench_thorvg_sdl src/thorvg/circlebench_thorvg_sdl.cpp)
-add_thorvg_benchmark(strokebench_thorvg_sdl src/thorvg/strokebench_thorvg_sdl.cpp)
-add_thorvg_benchmark(imagebench_thorvg_sdl src/thorvg/imagebench_thorvg_sdl.cpp)
+
+add_thorvg_benchmark(rectbench_thorvg_sdl           src/thorvg/rectbench_thorvg_sdl.cpp)
+add_thorvg_benchmark(circlebench_thorvg_sdl         src/thorvg/circlebench_thorvg_sdl.cpp)
+add_thorvg_benchmark(strokebench_thorvg_sdl         src/thorvg/strokebench_thorvg_sdl.cpp)
+add_thorvg_benchmark(imagebench_thorvg_sdl          src/thorvg/imagebench_thorvg_sdl.cpp)
 add_thorvg_benchmark(lineargradientbench_thorvg_sdl src/thorvg/lineargradientbench_thorvg_sdl.cpp)
 add_thorvg_benchmark(radialgradientbench_thorvg_sdl src/thorvg/radialgradientbench_thorvg_sdl.cpp)
-add_thorvg_benchmark(strokerectbench_thorvg_sdl src/thorvg/strokerectbench_thorvg_sdl.cpp)
+add_thorvg_benchmark(strokerectbench_thorvg_sdl     src/thorvg/strokerectbench_thorvg_sdl.cpp)
 
 # =============================================================================
 # Configuration Summary
 # =============================================================================
-message(STATUS "=== Rectbench Configuration ===")
-message(STATUS "Skia: vcpkg")
-message(STATUS "ThorVG: ${THORVG_LIB}")
-message(STATUS "WebGPU: pkg-config (wgpu_native)")
+
+message(STATUS "")
+message(STATUS "========== Rectbench Configuration ==========")
+message(STATUS "Skia        : ${SKIA_LIBS}")
+message(STATUS "SDL2        : ${SDL2_LIBS}")
+message(STATUS "WebGPU      : pkg-config (wgpu_native)")
+
+if(RECTBENCH_BUILD_THORVG)
+    message(STATUS "ThorVG      : source build")
+    message(STATUS "Install Dir : ${THORVG_INSTALL_DIR}")
+else()
+    message(STATUS "ThorVG      : pkg-config")
+    message(STATUS "Version     : ${THORVG_VERSION}")
+endif()
+
+message(STATUS "=============================================")

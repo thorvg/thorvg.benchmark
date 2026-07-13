@@ -13,7 +13,7 @@
 #include "core/SkMatrix.h"
 #include "core/SkPaint.h"
 #include "core/SkRect.h"
-#include "effects/SkGradientShader.h"
+#include "effects/SkGradient.h"
 
 #include <cmath>
 #include <cstdint>
@@ -40,15 +40,16 @@ void draw_linear_gradient_rects_skia(
       {rect.x, rect.y},
       {rect.x + rect.w, rect.y + rect.h}
     };
-    
-    SkColor colors[2] = {
-      SkColorSetARGB(rect.a, rect.r, rect.g, rect.b),
-      SkColorSetARGB(rect.a, 255 - rect.r, 255 - rect.g, 255 - rect.b)
+
+    SkColor4f colors[2] = {
+      SkColor4f::FromColor(SkColorSetARGB((U8CPU)rect.a, (U8CPU)rect.r, (U8CPU)rect.g, (U8CPU)rect.b)),
+      SkColor4f::FromColor(SkColorSetARGB((U8CPU)rect.a, 255 - (U8CPU)rect.r, 255 - (U8CPU)rect.g, 255 - (U8CPU)rect.b))
     };
 
     SkPaint paint;
     paint.setAntiAlias(true);
-    paint.setShader(SkGradientShader::MakeLinear(pts, colors, nullptr, 2, SkTileMode::kClamp));
+    SkGradient gradient(SkGradient::Colors(SkSpan(colors, 2), SkTileMode::kClamp), {});
+    paint.setShader(SkShaders::LinearGradient(pts, gradient));
 
     if (!apply_transforms) {
       canvas->drawRect(SkRect::MakeXYWH(rect.x, rect.y, rect.w, rect.h), paint);
