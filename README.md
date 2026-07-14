@@ -162,14 +162,7 @@ Create a comparison table from benchmark results:
 python3 tools/generate_report.py results_suite_*/summary.json
 ```
 
-**Output:** Prints a Markdown table comparing FPS across engines and backends:
-
-```
-| Benchmark (Scene) | Skia CPU | Skia GL | ThorVG CPU | ThorVG GL | ThorVG WebGPU |
-|-------------------|----------|---------|------------|-----------|---------------|
-| rect (default)    | 850.23   | 1200.45 | 720.10     | 980.33    | 1100.50       |
-| circle (rotation) | 640.12   | 890.67  | 580.44     | 750.22    | 820.15        |
-```
+**Output:** Prints a Markdown table comparing FPS across engines and backends.
 
 ## Output Format
 
