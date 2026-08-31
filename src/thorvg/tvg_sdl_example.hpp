@@ -179,7 +179,7 @@ struct SwWindow final : Window {
   SwWindow(Example *example, uint32_t target_width, uint32_t target_height,
            uint32_t threads_cnt, bool vsync,
            const std::string &window_title = "Benchmark",
-           tvg::EngineOption engine_option = tvg::EngineOption::Default)
+           tvg::EngineOption engine_option = tvg::EngineOption::None), // disable partial rendering for SwEngine
       : Window(example, target_width, target_height, threads_cnt, window_title) {
     (void)vsync;
     if (!initialized) {

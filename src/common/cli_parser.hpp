@@ -28,7 +28,7 @@ struct CliOptions {
   uint64_t seed = 12345;
   uint32_t frames = 1000;
   uint32_t warmup = 120;
-  uint32_t threads = max_thread_count(); // ThorVG thread count (default: max)
+  uint32_t threads = 4;              // ThorVG thread count (default: 4)
   uint32_t width = 2560;             // Window/render width
   uint32_t height = 1440;            // Window/render height
   bool vsync = false;
@@ -176,8 +176,7 @@ inline CliOptions parse_cli(int argc, char *argv[]) {
       if (is_max_token(str_val)) {
         opts.threads = max_thread_count();
       } else {
-        opts.threads =
-            static_cast<uint32_t>(std::strtoul(str_val.c_str(), nullptr, 10));
+        opts.threads = static_cast<uint32_t>(std::strtoul(str_val.c_str(), nullptr, 10));
       }
     } else if (parse_key_value(arg, "--width", u32_val)) {
       opts.width = u32_val;
