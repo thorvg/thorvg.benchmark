@@ -13,19 +13,33 @@
 #include <SDL2/SDL_metal.h>
 #endif
 
+#define GL_SILENCE_DEPRECATION
+#ifndef __APPLE__
+#ifndef GL_GLEXT_PROTOTYPES
+#define GL_GLEXT_PROTOTYPES 1
+#endif
+#endif
+#include <SDL2/SDL_opengl.h>
+
 #include <webgpu/webgpu.h>
+#include <webgpu/wgpu.h>
 
 #include <cstdint>
 #include <iostream>
 #include <string>
-#include <thread>
+#include <vector>
+
+#ifndef VGBENCH_THORVG_VERSION
+#define VGBENCH_THORVG_VERSION "unknown"
+#endif
+
+#ifndef VGBENCH_THORVG_REVISION
+#define VGBENCH_THORVG_REVISION "unknown"
+#endif
 
 namespace bench::tvgexam {
 
-inline uint32_t max_thread_count() {
-  const unsigned int count = std::thread::hardware_concurrency();
-  return count > 0 ? static_cast<uint32_t>(count) : 1u;
-}
+inline constexpr uint32_t kThreadCount = 4;
 
 inline bool verify(tvg::Result result, const std::string &fail_msg = {}) {
   switch (result) {
@@ -62,6 +76,7 @@ struct Example {
     (void)elapsed;
     return false;
   }
+  virtual const char *asset_hash() const { return ""; }
 
   virtual ~Example() = default;
 };
@@ -79,10 +94,10 @@ struct Window : bench::BenchmarkWindow {
   std::string window_title_;
 
   Window(Example *example, uint32_t target_width, uint32_t target_height,
-         uint32_t threads_cnt, const std::string &window_title = "Benchmark")
+         const std::string &window_title = "Benchmark")
       : width(target_width), height(target_height), example(example),
         window_title_(window_title) {
-    if (!verify(tvg::Initializer::init(threads_cnt),
+    if (!verify(tvg::Initializer::init(kThreadCount),
                 "Failed to init ThorVG engine")) {
       return;
     }
@@ -115,19 +130,6 @@ struct Window : bench::BenchmarkWindow {
     }
   }
 
-  bool pump_events(bool &running) override {
-    SDL_Event event;
-    while (SDL_PollEvent(&event)) {
-      if (event.type == SDL_QUIT) {
-        running = false;
-      }
-      if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE) {
-        running = false;
-      }
-    }
-    return running;
-  }
-
   bool draw() override {
     if (!canvas) {
       std::cerr << "Window::draw called without a canvas\n";
@@ -144,6 +146,9 @@ struct Window : bench::BenchmarkWindow {
       return false;
     }
     if (!example->content(canvas, width, height)) {
+      return false;
+    }
+    if (!update(0)) {
       return false;
     }
     if (!verify(canvas->draw())) {
@@ -168,6 +173,14 @@ struct Window : bench::BenchmarkWindow {
 
   const char *engine_id() const override { return "thorvg"; }
   const char *engine_title() const override { return "ThorVG"; }
+  const char *engine_version() const override { return VGBENCH_THORVG_VERSION; }
+  const char *engine_revision() const override {
+    return VGBENCH_THORVG_REVISION;
+  }
+  const char *scene_model() const override { return "retained"; }
+  const char *asset_hash() const override {
+    return example ? example->asset_hash() : "";
+  }
 };
 
 // Matches thorvg.example's SwWindow presentation path: `SDL_GetWindowSurface()`
@@ -177,10 +190,10 @@ struct SwWindow final : Window {
   SDL_Surface *surface = nullptr;
 
   SwWindow(Example *example, uint32_t target_width, uint32_t target_height,
-           uint32_t threads_cnt, bool vsync,
+           bool vsync,
            const std::string &window_title = "Benchmark",
            tvg::EngineOption engine_option = tvg::EngineOption::None)  // disable partial rendering for SwEngine
-      : Window(example, target_width, target_height, threads_cnt, window_title) {
+      : Window(example, target_width, target_height, window_title) {
     (void)vsync;
     if (!initialized) {
       return;
@@ -286,15 +299,30 @@ struct SwWindow final : Window {
 
   const char *backend_id() const override { return "cpu"; }
   const char *backend_title() const override { return "CPU"; }
+  const char *graphics_api() const override { return "CPU"; }
+  const char *present_mode() const override { return "software"; }
+  const char *pixel_format() const override { return "RGBA8"; }
+
+  bool capture(const std::string &path) override {
+    return bench::write_ppm_sdl_surface(path, surface);
+  }
 };
 
 struct GlWindow final : Window {
   SDL_GLContext context = nullptr;
+  bool gpu_sync = false;
+  bool actual_vsync = false;
+  bool verified_vsync = false;
+  std::string present_mode_ = "unknown";
+  std::string gpu_device_ = "unknown";
+  std::string gpu_vendor_ = "unknown";
+  std::string gpu_driver_ = "unknown";
 
   GlWindow(Example *example, uint32_t target_width, uint32_t target_height,
-           uint32_t threads_cnt, bool vsync,
+           bool vsync, bool gpu_sync,
            const std::string &window_title = "Benchmark")
-      : Window(example, target_width, target_height, threads_cnt, window_title) {
+      : Window(example, target_width, target_height, window_title),
+        gpu_sync(gpu_sync) {
     if (!initialized) {
       return;
     }
@@ -302,6 +330,17 @@ struct GlWindow final : Window {
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS,
+                        SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
+    SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
+    SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
+    SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
+    SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 8);
+    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
+    SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
+    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+    SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 0);
+    SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 0);
 
     std::string title = window_title_ + " ThorVG (OpenGL)";
     window = SDL_CreateWindow(title.c_str(),
@@ -320,15 +359,55 @@ struct GlWindow final : Window {
       std::cerr << "SDL_GL_CreateContext failed: " << SDL_GetError() << "\n";
       return;
     }
+    if (SDL_GL_MakeCurrent(window, context) < 0) {
+      std::cerr << "SDL_GL_MakeCurrent failed: " << SDL_GetError() << "\n";
+      return;
+    }
 
-    if (SDL_GL_SetSwapInterval(vsync ? 1 : 0) < 0) {
-      std::cerr << "Warning: Unable to set VSync: " << SDL_GetError() << "\n";
+    const int swap_result = SDL_GL_SetSwapInterval(vsync ? 1 : 0);
+    const int swap_interval = SDL_GL_GetSwapInterval();
+    actual_vsync = swap_interval != 0;
+    verified_vsync = swap_result == 0 && actual_vsync == vsync;
+    if (swap_interval == 0) {
+      present_mode_ = "immediate";
+    } else if (swap_interval == -1) {
+      present_mode_ = "adaptive-fifo";
+    } else {
+      present_mode_ = "fifo";
+    }
+    if (!verified_vsync) {
+      std::cerr << "Unable to verify requested GL swap interval "
+                << (vsync ? 1 : 0) << "; actual=" << swap_interval << ": "
+                << SDL_GetError() << "\n";
+    }
+    if (!bench::verify_gl33_core_context("ThorVG")) {
+      return;
     }
 
     auto dims = bench::adjust_window_for_hidpi(window, target_width,
                                                    target_height, true);
     width = static_cast<uint32_t>(dims.drawable_w);
     height = static_cast<uint32_t>(dims.drawable_h);
+
+    // ThorVG's GL loader exports a function-pointer variable named
+    // `glGetString`. When ThorVG is linked statically, that data symbol can
+    // override the platform GL function in this executable. Calling
+    // `glGetString` directly then branches into data and crashes. Resolve the
+    // function for this SDL context explicitly to avoid the symbol collision.
+    using GlGetStringProc = const GLubyte *(APIENTRYP)(GLenum);
+    const auto get_string = reinterpret_cast<GlGetStringProc>(
+        SDL_GL_GetProcAddress("glGetString"));
+    if (!get_string) {
+      std::cerr << "SDL_GL_GetProcAddress(glGetString) failed: "
+                << SDL_GetError() << "\n";
+      return;
+    }
+    const auto *renderer = get_string(GL_RENDERER);
+    const auto *vendor = get_string(GL_VENDOR);
+    const auto *version = get_string(GL_VERSION);
+    if (renderer) gpu_device_ = reinterpret_cast<const char *>(renderer);
+    if (vendor) gpu_vendor_ = reinterpret_cast<const char *>(vendor);
+    if (version) gpu_driver_ = reinterpret_cast<const char *>(version);
 
     canvas = tvg::GlCanvas::gen();
     if (!canvas) {
@@ -362,6 +441,41 @@ struct GlWindow final : Window {
 
   const char *backend_id() const override { return "gl"; }
   const char *backend_title() const override { return "OpenGL"; }
+  const char *graphics_api() const override { return "OpenGL"; }
+  const char *gpu_device() const override { return gpu_device_.c_str(); }
+  const char *gpu_vendor() const override { return gpu_vendor_.c_str(); }
+  const char *gpu_driver() const override { return gpu_driver_.c_str(); }
+  const char *gpu_completion() const override {
+    return gpu_sync ? "glFinish" : "none";
+  }
+  const char *present_mode() const override { return present_mode_.c_str(); }
+  const char *pixel_format() const override { return "RGBA8"; }
+  bool vsync_actual() const override { return actual_vsync; }
+  bool vsync_verified() const override { return verified_vsync; }
+
+  bool finish_gpu() override {
+    if (gpu_sync) {
+      glFinish();
+    }
+    return true;
+  }
+
+  bool capture(const std::string &path) override {
+    if (!context || width == 0 || height == 0) {
+      return false;
+    }
+    std::vector<uint8_t> pixels(static_cast<size_t>(width) * height * 4u);
+#ifdef GL_BACK
+    glReadBuffer(GL_BACK);
+#endif
+    glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    glReadPixels(0, 0, static_cast<GLsizei>(width),
+                 static_cast<GLsizei>(height), GL_RGBA, GL_UNSIGNED_BYTE,
+                 pixels.data());
+    return bench::write_ppm_rgba(path, pixels.data(), width, height,
+                                 static_cast<size_t>(width) * 4u,
+                                 /*flip_y=*/true);
+  }
 };
 
 
@@ -369,15 +483,49 @@ struct WgpuContext {
   WGPUInstance instance = nullptr;
   WGPUAdapter adapter = nullptr;
   WGPUDevice device = nullptr;
+  WGPUQueue queue = nullptr;
   WGPUSurface surface = nullptr;
   WGPUSurfaceConfiguration config = {};
+  WGPUPresentMode selected_present_mode = WGPUPresentMode_Undefined;
+  bool present_mode_verified = false;
+  std::string adapter_device = "unknown";
+  std::string adapter_vendor = "unknown";
+  std::string adapter_description = "unknown";
+  std::string graphics_api = "WebGPU unknown";
 
 #ifdef __APPLE__
   SDL_MetalView metalView = nullptr;
 #endif
 
+  static std::string string_view(WGPUStringView view) {
+    if (!view.data) return "unknown";
+    if (view.length == WGPU_STRLEN) return std::string(view.data);
+    return std::string(view.data, view.length);
+  }
+
+  static const char *backend_name(WGPUBackendType backend) {
+    switch (backend) {
+    case WGPUBackendType_D3D11: return "D3D11";
+    case WGPUBackendType_D3D12: return "D3D12";
+    case WGPUBackendType_Metal: return "Metal";
+    case WGPUBackendType_Vulkan: return "Vulkan";
+    case WGPUBackendType_OpenGL: return "OpenGL";
+    case WGPUBackendType_OpenGLES: return "OpenGL ES";
+    case WGPUBackendType_WebGPU: return "WebGPU";
+    default: return "WebGPU";
+    }
+  }
+
+  static bool supports_present_mode(const WGPUSurfaceCapabilities &caps,
+                                    WGPUPresentMode mode) {
+    for (size_t i = 0; i < caps.presentModeCount; ++i) {
+      if (caps.presentModes[i] == mode) return true;
+    }
+    return false;
+  }
+
   bool init(SDL_Window *window, uint32_t width, uint32_t height,
-            bool use_external_device) {
+            bool requested_vsync) {
     WGPUInstanceDescriptor instanceDesc = {};
     instance = wgpuCreateInstance(&instanceDesc);
     if (!instance) {
@@ -416,22 +564,16 @@ struct WgpuContext {
       return false;
     }
 
-    // For external device mode, ThorVG owns adapter/device/surface configuration.
-    if (use_external_device) {
-      return true;
-    }
-
     WGPURequestAdapterOptions adapterOpts = {};
     adapterOpts.compatibleSurface = surface;
 
     struct AdapterUserData {
       WGPUAdapter adapter = nullptr;
       bool done = false;
-      bool failed = false;
     } adapterData;
 
     WGPURequestAdapterCallbackInfo adapterCbInfo = {};
-    adapterCbInfo.mode = WGPUCallbackMode_AllowSpontaneous;
+    adapterCbInfo.mode = WGPUCallbackMode_AllowProcessEvents;
     adapterCbInfo.callback = [](WGPURequestAdapterStatus status,
                                 WGPUAdapter adapter, WGPUStringView message,
                                 void *userdata, void *) {
@@ -440,8 +582,7 @@ struct WgpuContext {
         data->adapter = adapter;
       } else {
         std::cerr << "Adapter request failed: "
-                  << (message.length ? message.data : "unknown") << "\n";
-        data->failed = true;
+                  << WgpuContext::string_view(message) << "\n";
       }
       data->done = true;
     };
@@ -449,24 +590,32 @@ struct WgpuContext {
 
     wgpuInstanceRequestAdapter(instance, &adapterOpts, adapterCbInfo);
 
-    while (!adapterData.done && !adapterData.failed) {
+    while (!adapterData.done) {
       wgpuInstanceProcessEvents(instance);
     }
 
-    if (adapterData.failed || !adapterData.adapter) {
+    if (!adapterData.adapter) {
       std::cerr << "Failed to get WGPUAdapter\n";
       return false;
     }
     adapter = adapterData.adapter;
 
+    WGPUAdapterInfo adapter_info = {};
+    if (wgpuAdapterGetInfo(adapter, &adapter_info) == WGPUStatus_Success) {
+      adapter_device = string_view(adapter_info.device);
+      adapter_vendor = string_view(adapter_info.vendor);
+      adapter_description = string_view(adapter_info.description);
+      graphics_api = std::string("WebGPU ") + backend_name(adapter_info.backendType);
+      wgpuAdapterInfoFreeMembers(adapter_info);
+    }
+
     struct DeviceUserData {
       WGPUDevice device = nullptr;
       bool done = false;
-      bool failed = false;
     } deviceData;
 
     WGPURequestDeviceCallbackInfo deviceCbInfo = {};
-    deviceCbInfo.mode = WGPUCallbackMode_AllowSpontaneous;
+    deviceCbInfo.mode = WGPUCallbackMode_AllowProcessEvents;
     deviceCbInfo.callback = [](WGPURequestDeviceStatus status, WGPUDevice device,
                                WGPUStringView message, void *userdata, void *) {
       auto *data = static_cast<DeviceUserData *>(userdata);
@@ -474,8 +623,7 @@ struct WgpuContext {
         data->device = device;
       } else {
         std::cerr << "Device request failed: "
-                  << (message.length ? message.data : "unknown") << "\n";
-        data->failed = true;
+                  << WgpuContext::string_view(message) << "\n";
       }
       data->done = true;
     };
@@ -484,28 +632,73 @@ struct WgpuContext {
     WGPUDeviceDescriptor deviceDesc = {};
     wgpuAdapterRequestDevice(adapter, &deviceDesc, deviceCbInfo);
 
-    while (!deviceData.done && !deviceData.failed) {
+    while (!deviceData.done) {
       wgpuInstanceProcessEvents(instance);
     }
 
-    if (deviceData.failed || !deviceData.device) {
+    if (!deviceData.device) {
       std::cerr << "Failed to get WGPUDevice\n";
       return false;
     }
     device = deviceData.device;
+    queue = wgpuDeviceGetQueue(device);
+    if (!queue) {
+      std::cerr << "Failed to get WebGPU queue\n";
+      return false;
+    }
+
+    WGPUSurfaceCapabilities capabilities = {};
+    if (wgpuSurfaceGetCapabilities(surface, adapter, &capabilities) !=
+        WGPUStatus_Success) {
+      std::cerr << "Failed to query WebGPU surface capabilities\n";
+      return false;
+    }
+
+    bool supports_bgra8 = false;
+    for (size_t i = 0; i < capabilities.formatCount; ++i) {
+      supports_bgra8 = supports_bgra8 ||
+                       capabilities.formats[i] == WGPUTextureFormat_BGRA8Unorm;
+    }
+    if (!supports_bgra8) {
+      std::cerr << "WebGPU surface does not support required BGRA8 format\n";
+      wgpuSurfaceCapabilitiesFreeMembers(capabilities);
+      return false;
+    }
+
+    if (requested_vsync) {
+      selected_present_mode = WGPUPresentMode_Fifo;
+      present_mode_verified =
+          supports_present_mode(capabilities, selected_present_mode);
+    } else if (supports_present_mode(capabilities,
+                                     WGPUPresentMode_Immediate)) {
+      selected_present_mode = WGPUPresentMode_Immediate;
+      present_mode_verified = true;
+    } else if (supports_present_mode(capabilities,
+                                     WGPUPresentMode_Mailbox)) {
+      selected_present_mode = WGPUPresentMode_Mailbox;
+      present_mode_verified = true;
+    } else {
+      selected_present_mode = WGPUPresentMode_Fifo;
+      present_mode_verified = false;
+    }
+    wgpuSurfaceCapabilitiesFreeMembers(capabilities);
 
     config.device = device;
     config.format = WGPUTextureFormat_BGRA8Unorm;
     config.usage = WGPUTextureUsage_RenderAttachment;
     config.width = width;
     config.height = height;
-    config.presentMode = WGPUPresentMode_Fifo;
+    config.presentMode = selected_present_mode;
     wgpuSurfaceConfigure(surface, &config);
 
     return true;
   }
 
   void destroy() {
+    if (queue) {
+      wgpuQueueRelease(queue);
+      queue = nullptr;
+    }
     if (device) {
       wgpuDeviceRelease(device);
       device = nullptr;
@@ -536,17 +729,171 @@ struct WgpuContext {
       wgpuSurfacePresent(surface);
     }
   }
+
+  void configure_surface() {
+    if (surface && device) {
+      wgpuSurfaceConfigure(surface, &config);
+    }
+  }
+
+  bool finish() {
+    if (!queue || !device || !instance) {
+      return false;
+    }
+
+    struct QueueDone {
+      bool complete = false;
+      bool success = false;
+    } done;
+
+    WGPUQueueWorkDoneCallbackInfo callback_info = {};
+    callback_info.mode = WGPUCallbackMode_AllowProcessEvents;
+    callback_info.callback = [](WGPUQueueWorkDoneStatus status,
+                                void *userdata, void *) {
+      auto *state = static_cast<QueueDone *>(userdata);
+      state->success = status == WGPUQueueWorkDoneStatus_Success;
+      state->complete = true;
+    };
+    callback_info.userdata1 = &done;
+    wgpuQueueOnSubmittedWorkDone(queue, callback_info);
+
+    while (!done.complete) {
+      wgpuDevicePoll(device, true, nullptr);
+      wgpuInstanceProcessEvents(instance);
+    }
+    return done.success;
+  }
+
+  bool capture_texture(WGPUTexture texture, const std::string &path,
+                       uint32_t width, uint32_t height) {
+    if (!texture || !device || !queue || !instance || width == 0 ||
+        height == 0) {
+      return false;
+    }
+
+    constexpr uint32_t kCopyRowAlignment = 256;
+    const uint32_t unpadded_bytes_per_row = width * 4u;
+    const uint32_t padded_bytes_per_row =
+        (unpadded_bytes_per_row + kCopyRowAlignment - 1u) &
+        ~(kCopyRowAlignment - 1u);
+    const uint64_t buffer_size =
+        static_cast<uint64_t>(padded_bytes_per_row) * height;
+
+    WGPUBufferDescriptor buffer_desc = {};
+    buffer_desc.usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead;
+    buffer_desc.size = buffer_size;
+    WGPUBuffer buffer = wgpuDeviceCreateBuffer(device, &buffer_desc);
+    if (!buffer) return false;
+
+    WGPUCommandEncoderDescriptor encoder_desc = {};
+    WGPUCommandEncoder encoder =
+        wgpuDeviceCreateCommandEncoder(device, &encoder_desc);
+    if (!encoder) {
+      wgpuBufferRelease(buffer);
+      return false;
+    }
+
+    WGPUTexelCopyTextureInfo source = {};
+    source.texture = texture;
+    source.aspect = WGPUTextureAspect_All;
+
+    WGPUTexelCopyBufferInfo destination = {};
+    destination.buffer = buffer;
+    destination.layout.bytesPerRow = padded_bytes_per_row;
+    destination.layout.rowsPerImage = height;
+
+    WGPUExtent3D extent = {width, height, 1};
+    wgpuCommandEncoderCopyTextureToBuffer(encoder, &source, &destination,
+                                          &extent);
+    WGPUCommandBuffer command = wgpuCommandEncoderFinish(encoder, nullptr);
+    wgpuCommandEncoderRelease(encoder);
+    if (!command) {
+      wgpuBufferRelease(buffer);
+      return false;
+    }
+    wgpuQueueSubmit(queue, 1, &command);
+    wgpuCommandBufferRelease(command);
+
+    struct MapDone {
+      bool complete = false;
+      bool success = false;
+    } done;
+
+    WGPUBufferMapCallbackInfo callback_info = {};
+    callback_info.mode = WGPUCallbackMode_AllowProcessEvents;
+    callback_info.callback = [](WGPUMapAsyncStatus status, WGPUStringView message,
+                                void *userdata, void *) {
+      auto *state = static_cast<MapDone *>(userdata);
+      if (status != WGPUMapAsyncStatus_Success) {
+        std::cerr << "WebGPU capture map failed: "
+                  << WgpuContext::string_view(message) << "\n";
+      }
+      state->success = status == WGPUMapAsyncStatus_Success;
+      state->complete = true;
+    };
+    callback_info.userdata1 = &done;
+    wgpuBufferMapAsync(buffer, WGPUMapMode_Read, 0,
+                       static_cast<size_t>(buffer_size), callback_info);
+
+    while (!done.complete) {
+      wgpuDevicePoll(device, true, nullptr);
+      wgpuInstanceProcessEvents(instance);
+    }
+    if (!done.success) {
+      wgpuBufferRelease(buffer);
+      return false;
+    }
+
+    const auto *mapped = static_cast<const uint8_t *>(
+        wgpuBufferGetConstMappedRange(buffer, 0,
+                                      static_cast<size_t>(buffer_size)));
+    if (!mapped) {
+      wgpuBufferUnmap(buffer);
+      wgpuBufferRelease(buffer);
+      return false;
+    }
+
+    std::vector<uint8_t> rgba(static_cast<size_t>(width) * height * 4u);
+    for (uint32_t y = 0; y < height; ++y) {
+      const uint8_t *source_row =
+          mapped + static_cast<size_t>(y) * padded_bytes_per_row;
+      uint8_t *destination_row =
+          rgba.data() + static_cast<size_t>(y) * unpadded_bytes_per_row;
+      for (uint32_t x = 0; x < width; ++x) {
+        const size_t offset = static_cast<size_t>(x) * 4u;
+        destination_row[offset] = source_row[offset + 2u];
+        destination_row[offset + 1u] = source_row[offset + 1u];
+        destination_row[offset + 2u] = source_row[offset];
+        destination_row[offset + 3u] = source_row[offset + 3u];
+      }
+    }
+
+    wgpuBufferUnmap(buffer);
+    wgpuBufferRelease(buffer);
+    return bench::write_ppm_rgba(path, rgba.data(), width, height,
+                                  static_cast<size_t>(width) * 4u);
+  }
+
+  const char *present_mode_name() const {
+    switch (selected_present_mode) {
+    case WGPUPresentMode_Immediate: return "immediate";
+    case WGPUPresentMode_Mailbox: return "mailbox";
+    case WGPUPresentMode_FifoRelaxed: return "fifo-relaxed";
+    case WGPUPresentMode_Fifo: return "fifo";
+    default: return "unknown";
+    }
+  }
 };
 
 struct WgWindow final : Window {
   WgpuContext wgpu;
-  bool use_external_device = false;
+  bool gpu_sync = false;
 
   WgWindow(Example *example, uint32_t target_width, uint32_t target_height,
-           uint32_t threads_cnt, bool use_external_device,
+           bool vsync, bool gpu_sync,
            const std::string &window_title = "Benchmark")
-      : Window(example, target_width, target_height, threads_cnt, window_title),
-        use_external_device(use_external_device) {
+      : Window(example, target_width, target_height, window_title),
+        gpu_sync(gpu_sync) {
     if (!initialized) {
       return;
     }
@@ -582,7 +929,7 @@ struct WgWindow final : Window {
     width = static_cast<uint32_t>(drawable_w);
     height = static_cast<uint32_t>(drawable_h);
 
-    if (!wgpu.init(window, width, height, use_external_device)) {
+    if (!wgpu.init(window, width, height, vsync)) {
       std::cerr << "Failed to initialize WebGPU context\n";
       return;
     }
@@ -594,12 +941,16 @@ struct WgWindow final : Window {
     }
 
     if (!verify(static_cast<tvg::WgCanvas *>(canvas)->target(
-            use_external_device ? nullptr : wgpu.device, wgpu.instance,
-            wgpu.surface, static_cast<uint32_t>(width), static_cast<uint32_t>(height),
+            wgpu.device, wgpu.instance, wgpu.surface,
+            static_cast<uint32_t>(width), static_cast<uint32_t>(height),
             tvg::ColorSpace::ABGR8888S, 0),
                 "Failed to set WgCanvas target")) {
       return;
     }
+
+    // ThorVG configures the supplied surface internally. Reapply the harness
+    // selection so Immediate/Mailbox policy remains authoritative.
+    wgpu.configure_surface();
   }
 
   ~WgWindow() override {
@@ -612,6 +963,67 @@ struct WgWindow final : Window {
 
   const char *backend_id() const override { return "webgpu"; }
   const char *backend_title() const override { return "WebGPU"; }
+  const char *graphics_api() const override {
+    return wgpu.graphics_api.c_str();
+  }
+  const char *gpu_device() const override {
+    return wgpu.adapter_device.c_str();
+  }
+  const char *gpu_vendor() const override {
+    return wgpu.adapter_vendor.c_str();
+  }
+  const char *gpu_driver() const override {
+    return wgpu.adapter_description.c_str();
+  }
+  const char *gpu_completion() const override {
+    return gpu_sync ? "queue.onSubmittedWorkDone" : "none";
+  }
+  const char *present_mode() const override {
+    return wgpu.present_mode_name();
+  }
+  const char *pixel_format() const override { return "BGRA8"; }
+  bool vsync_actual() const override {
+    return wgpu.selected_present_mode != WGPUPresentMode_Immediate;
+  }
+  bool vsync_verified() const override {
+    return wgpu.present_mode_verified;
+  }
+
+  bool finish_gpu() override { return !gpu_sync || wgpu.finish(); }
+
+  bool capture(const std::string &path) override {
+    if (!canvas || !wgpu.device || !wgpu.instance || !wgpu.surface) {
+      return false;
+    }
+
+    WGPUTextureDescriptor texture_desc = {};
+    texture_desc.usage =
+        WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_CopySrc;
+    texture_desc.dimension = WGPUTextureDimension_2D;
+    texture_desc.size = {width, height, 1};
+    texture_desc.format = WGPUTextureFormat_BGRA8Unorm;
+    texture_desc.mipLevelCount = 1;
+    texture_desc.sampleCount = 1;
+    WGPUTexture texture = wgpuDeviceCreateTexture(wgpu.device, &texture_desc);
+    if (!texture) return false;
+
+    auto *wg_canvas = static_cast<tvg::WgCanvas *>(canvas);
+    bool captured = false;
+    if (verify(wg_canvas->target(wgpu.device, wgpu.instance, texture, width,
+                                 height, tvg::ColorSpace::ABGR8888S, 1),
+               "Failed to set WebGPU capture target") &&
+        update(0) && draw()) {
+      captured = wgpu.capture_texture(texture, path, width, height);
+    }
+
+    const bool restored = verify(
+        wg_canvas->target(wgpu.device, wgpu.instance, wgpu.surface, width,
+                          height, tvg::ColorSpace::ABGR8888S, 0),
+        "Failed to restore WebGPU surface target");
+    if (restored) wgpu.configure_surface();
+    wgpuTextureRelease(texture);
+    return captured && restored;
+  }
 };
 
 } // namespace bench::tvgexam

@@ -14,7 +14,6 @@
 
 #include "tvg_sdl_example.hpp"
 
-#include <cmath>
 #include <cstdint>
 #include <iostream>
 #include <memory>
@@ -54,54 +53,20 @@ public:
     bench::TransformGenConfig transform_config;
     transform_config.max_rotation_deg = 0.0f; // Circles are rotation-invariant.
 
-    if (opts_.scene_mode == bench::SceneMode::Default ||
-        opts_.scene_mode == bench::SceneMode::Rotation) {
-      auto transforms = bench::generate_transforms(
-          opts_.seed, frame_index, circle_config_.circle_count,
-          transform_config);
+    auto transforms = bench::generate_transforms(
+        opts_.seed, frame_index, circle_config_.circle_count, transform_config);
 
-      constexpr float kDegToRad =
-          0.01745329251994329576923690768489f; // pi/180
-
-      for (size_t i = 0; i < static_shapes_.size() && i < transforms.size() &&
-                         i < static_circles_.size();
-           ++i) {
-        const auto &t = transforms[i];
-        const auto &circle = static_circles_[i];
-
-        const float cx = circle.cx;
-        const float cy = circle.cy;
-
-        float a, b, c, d;
-        if (t.rotation_deg == 0.0f) {
-          a = t.scale;
-          b = 0.0f;
-          c = 0.0f;
-          d = t.scale;
-        } else {
-          const float rad = t.rotation_deg * kDegToRad;
-          const float cos_theta = std::cos(rad);
-          const float sin_theta = std::sin(rad);
-
-          a = cos_theta * t.scale;
-          b = -sin_theta * t.scale;
-          c = sin_theta * t.scale;
-          d = cos_theta * t.scale;
-        }
-
-        // Rotate/scale around circle center, then translate by (dx,dy).
-        const float tx = t.dx + cx - (a * cx + b * cy);
-        const float ty = t.dy + cy - (c * cx + d * cy);
-
-        // ThorVG Matrix: e11,e12,e13,e21,e22,e23,e31,e32,e33
-        tvg::Matrix m = {a, b, tx, c, d, ty, 0, 0, 1};
-        static_shapes_[i]->transform(m);
-      }
-
-      canvas->update();
-      return true;
+    for (size_t i = 0; i < static_shapes_.size(); ++i) {
+      const auto &circle = static_circles_[i];
+      const auto affine =
+          bench::centered_transform(transforms[i], circle.cx, circle.cy);
+      tvg::Matrix m = {affine.a, affine.b, affine.tx, affine.c, affine.d,
+                       affine.ty, 0,        0,        1};
+      static_shapes_[i]->transform(m);
     }
-    return false;
+
+    canvas->update();
+    return true;
   }
 
 private:
@@ -118,18 +83,18 @@ make_window_with_example(const bench::CliOptions &opts) {
   switch (opts.backend) {
   case bench::Backend::CPU:
     return std::make_unique<bench::tvgexam::SwWindow>(
-        example.release(), opts.width, opts.height, opts.threads, opts.vsync,
+        example.release(), opts.width, opts.height, opts.vsync,
         "Circlebench");
 
   case bench::Backend::GL:
     return std::make_unique<bench::tvgexam::GlWindow>(
-        example.release(), opts.width, opts.height, opts.threads, opts.vsync,
-        "Circlebench");
+        example.release(), opts.width, opts.height, opts.vsync,
+        opts.gpu_sync, "Circlebench");
 
   case bench::Backend::WebGPU:
     return std::make_unique<bench::tvgexam::WgWindow>(
-        example.release(), opts.width, opts.height, opts.threads,
-        opts.wgpu_external_device, "Circlebench");
+        example.release(), opts.width, opts.height, opts.vsync,
+        opts.gpu_sync, "Circlebench");
   }
 
   return nullptr;

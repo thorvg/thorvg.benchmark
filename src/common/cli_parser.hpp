@@ -5,11 +5,8 @@
 #include <cstring>
 #include <iostream>
 #include <string>
-#include <thread>
 
 namespace bench {
-
-inline uint32_t max_thread_count();
 
 /// Supported backends
 enum class Backend { CPU, GL, WebGPU };
@@ -24,17 +21,17 @@ enum class SceneMode {
 struct CliOptions {
   Backend backend = Backend::CPU;
   SceneMode scene_mode = SceneMode::Default;
+  std::string benchmark;
   std::string image_ext = "png";
   uint64_t seed = 12345;
   uint32_t frames = 1000;
   uint32_t warmup = 120;
-  uint32_t threads = 4;              // ThorVG thread count (default: 4)
   uint32_t width = 2560;             // Window/render width
   uint32_t height = 1440;            // Window/render height
   bool vsync = false;
-  bool gpu_sync = false;             // GL only: glFinish before stopping timer
+  bool gpu_sync = true;              // GPU: wait for completion before stopping timer
   std::string output_path;           // Empty means auto-generate
-  bool wgpu_external_device = false; // WebGPU: use external device
+  std::string capture_path;          // Empty means no capture
 
   // Validation
   bool valid = true;
@@ -79,20 +76,6 @@ inline bool parse_key_value(const char *arg, const char *key, bool &value) {
   return false;
 }
 
-inline uint32_t max_thread_count() {
-  const unsigned int count = std::thread::hardware_concurrency();
-  return count > 0 ? static_cast<uint32_t>(count) : 1u;
-}
-
-inline bool is_max_token(const std::string &value) {
-  if (value.size() != 3) {
-    return false;
-  }
-  return (value[0] == 'm' || value[0] == 'M') &&
-         (value[1] == 'a' || value[1] == 'A') &&
-         (value[2] == 'x' || value[2] == 'X');
-}
-
 /// Print usage information
 inline void print_usage(const char *program_name) {
   std::cout << "Usage: " << program_name << " [options]\n"
@@ -102,21 +85,18 @@ inline void print_usage(const char *program_name) {
             << "                            Scene mode (default: default)\n"
             << "                              default: reuse shapes with per-frame translation + scale\n"
             << "                              rotation: reuse shapes with per-frame translation + scale + rotation\n"
-            << "  --image=png|jpg           Imagebench only: image type (default: jpg)\n"
+            << "  --image=png|jpg           Imagebench only: image type (default: png)\n"
             << "  --seed=INT                RNG seed (default: 12345)\n"
             << "  --frames=INT              Measured frames (default: 1000)\n"
             << "  --warmup=INT              Warmup frames (default: 120)\n"
-            << "  --threads=INT|max         ThorVG thread count (default: max)\n"
-            << "                            max uses hardware_concurrency\n"
             << "  --width=INT               Window/render width (default: 2560)\n"
             << "  --height=INT              Window/render height (default: 1440)\n"
             << "  --vsync=0|1               VSync (default: 0)\n"
-            << "  --gpu_sync=0|1            GL only: glFinish for accurate GPU "
-               "timing (default: 0)\n"
+            << "  --gpu_sync=0|1            Wait for GPU completion before "
+               "stopping the timer (default: 1)\n"
             << "  --output=PATH             Output JSON path (default: "
                "auto-generated)\n"
-            << "  --wgpu_external_device=0|1  WebGPU: use external device "
-               "(default: 0)\n"
+            << "  --capture=PATH            Capture the prepared frame\n"
             << "  --help                    Show this help message\n";
 }
 
@@ -172,12 +152,6 @@ inline CliOptions parse_cli(int argc, char *argv[]) {
       opts.frames = u32_val;
     } else if (parse_key_value(arg, "--warmup", u32_val)) {
       opts.warmup = u32_val;
-    } else if (parse_key_value(arg, "--threads", str_val)) {
-      if (is_max_token(str_val)) {
-        opts.threads = max_thread_count();
-      } else {
-        opts.threads = static_cast<uint32_t>(std::strtoul(str_val.c_str(), nullptr, 10));
-      }
     } else if (parse_key_value(arg, "--width", u32_val)) {
       opts.width = u32_val;
     } else if (parse_key_value(arg, "--height", u32_val)) {
@@ -188,11 +162,21 @@ inline CliOptions parse_cli(int argc, char *argv[]) {
       opts.gpu_sync = bool_val;
     } else if (parse_key_value(arg, "--output", str_val)) {
       opts.output_path = str_val;
-    } else if (parse_key_value(arg, "--wgpu_external_device", bool_val)) {
-      opts.wgpu_external_device = bool_val;
+    } else if (parse_key_value(arg, "--capture", str_val)) {
+      opts.capture_path = str_val;
     } else {
       opts.valid = false;
       opts.error_message = std::string("Unknown option: ") + arg;
+    }
+  }
+
+  if (opts.benchmark.empty()) {
+    std::string program = argc > 0 && argv[0] ? argv[0] : "";
+    const size_t slash = program.find_last_of("/\\");
+    if (slash != std::string::npos) program.erase(0, slash + 1);
+    const size_t marker = program.find("bench_");
+    if (marker != std::string::npos) {
+      opts.benchmark = program.substr(0, marker);
     }
   }
 

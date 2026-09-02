@@ -19,7 +19,6 @@
 #include "core/SkPaint.h"
 #include "core/SkRect.h"
 
-#include <cmath>
 #include <cstdint>
 #include <iostream>
 #include <memory>
@@ -29,55 +28,23 @@ namespace {
 
 void draw_rects_skia(
     SkCanvas *canvas, const std::vector<bench::RectData> &rects,
-    const std::vector<bench::TransformData> *transforms = nullptr) {
+    const std::vector<bench::TransformData> &transforms) {
   SkPaint paint;
   paint.setAntiAlias(true);
   paint.setStyle(SkPaint::kFill_Style);
-
-  const bool apply_transforms =
-      transforms && transforms->size() >= rects.size();
-
-  constexpr float kDegToRad =
-      0.01745329251994329576923690768489f; // pi/180
 
   for (size_t i = 0; i < rects.size(); ++i) {
     const auto &rect = rects[i];
 
     paint.setColor(SkColorSetARGB(rect.a, rect.r, rect.g, rect.b));
 
-    if (!apply_transforms) {
-      canvas->drawRect(SkRect::MakeXYWH(rect.x, rect.y, rect.w, rect.h), paint);
-      continue;
-    }
-
-    const auto &t = (*transforms)[i];
-
     const float cx = rect.x + rect.w * 0.5f;
     const float cy = rect.y + rect.h * 0.5f;
-
-    float a, b, c, d;
-    if (t.rotation_deg == 0.0f) {
-      a = t.scale;
-      b = 0.0f;
-      c = 0.0f;
-      d = t.scale;
-    } else {
-      const float rad = t.rotation_deg * kDegToRad;
-      const float cos_theta = std::cos(rad);
-      const float sin_theta = std::sin(rad);
-
-      a = cos_theta * t.scale;
-      b = -sin_theta * t.scale;
-      c = sin_theta * t.scale;
-      d = cos_theta * t.scale;
-    }
-
-    // Rotate/scale around rect center, then translate by (dx,dy).
-    const float tx = t.dx + cx - (a * cx + b * cy);
-    const float ty = t.dy + cy - (c * cx + d * cy);
+    const auto affine = bench::centered_transform(transforms[i], cx, cy);
 
     SkMatrix m;
-    m.setAll(a, b, tx, c, d, ty, 0, 0, 1);
+    m.setAll(affine.a, affine.b, affine.tx, affine.c, affine.d, affine.ty, 0, 0,
+             1);
 
     canvas->save();
     canvas->concat(m);
@@ -110,15 +77,9 @@ public:
       transform_config.max_rotation_deg = 0.0f;
     }
 
-    if (scene_mode_ == bench::SceneMode::Default ||
-        scene_mode_ == bench::SceneMode::Rotation) {
-      transforms_ =
-          bench::generate_transforms(seed_, frame_index,
-                                         rect_config_.rect_count,
-                                         transform_config);
-      return true;
-    }
-    return false;
+    transforms_ = bench::generate_transforms(
+        seed_, frame_index, rect_config_.rect_count, transform_config);
+    return true;
   }
 
   bool draw(SkCanvas *canvas) override {
@@ -128,16 +89,7 @@ public:
 
     canvas->clear(SK_ColorBLACK);
 
-    const std::vector<bench::RectData> *rects_ptr = nullptr;
-    const std::vector<bench::TransformData> *transforms_ptr = nullptr;
-
-    rects_ptr = &static_rects_;
-    if (scene_mode_ == bench::SceneMode::Default ||
-        scene_mode_ == bench::SceneMode::Rotation) {
-      transforms_ptr = &transforms_;
-    }
-
-    draw_rects_skia(canvas, *rects_ptr, transforms_ptr);
+    draw_rects_skia(canvas, static_rects_, transforms_);
     return true;
   }
 

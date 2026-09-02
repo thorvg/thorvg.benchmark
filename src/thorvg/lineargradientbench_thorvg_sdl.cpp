@@ -10,7 +10,6 @@
 
 #include "tvg_sdl_example.hpp"
 
-#include <cmath>
 #include <cstdint>
 #include <iostream>
 #include <memory>
@@ -62,50 +61,22 @@ public:
       transform_config.max_rotation_deg = 0.0f;
     }
 
-    if (opts_.scene_mode == bench::SceneMode::Default ||
-        opts_.scene_mode == bench::SceneMode::Rotation) {
-      auto transforms = bench::generate_transforms(
-          opts_.seed, frame_index, rect_config_.rect_count, transform_config);
+    auto transforms = bench::generate_transforms(
+        opts_.seed, frame_index, rect_config_.rect_count, transform_config);
 
-      constexpr float kDegToRad = 0.01745329251994329576923690768489f;
+    for (size_t i = 0; i < static_shapes_.size(); ++i) {
+      const auto &rect = static_rects_[i];
 
-      for (size_t i = 0; i < static_shapes_.size() && i < transforms.size() &&
-                         i < static_rects_.size();
-           ++i) {
-        const auto &t = transforms[i];
-        const auto &rect = static_rects_[i];
-
-        const float cx = rect.x + rect.w * 0.5f;
-        const float cy = rect.y + rect.h * 0.5f;
-
-        float a, b, c, d;
-        if (t.rotation_deg == 0.0f) {
-          a = t.scale;
-          b = 0.0f;
-          c = 0.0f;
-          d = t.scale;
-        } else {
-          const float rad = t.rotation_deg * kDegToRad;
-          const float cos_theta = std::cos(rad);
-          const float sin_theta = std::sin(rad);
-
-          a = cos_theta * t.scale;
-          b = -sin_theta * t.scale;
-          c = sin_theta * t.scale;
-          d = cos_theta * t.scale;
-        }
-
-        const float tx = t.dx + cx - (a * cx + b * cy);
-        const float ty = t.dy + cy - (c * cx + d * cy);
-
-        tvg::Matrix m = {a, b, tx, c, d, ty, 0, 0, 1};
-        static_shapes_[i]->transform(m);
-      }
-
-      canvas->update();
-      return true;
+      const float cx = rect.x + rect.w * 0.5f;
+      const float cy = rect.y + rect.h * 0.5f;
+      const auto affine = bench::centered_transform(transforms[i], cx, cy);
+      tvg::Matrix m = {affine.a, affine.b, affine.tx, affine.c, affine.d,
+                       affine.ty, 0,        0,        1};
+      static_shapes_[i]->transform(m);
     }
-    return false;
+
+    canvas->update();
+    return true;
   }
 
 private:
@@ -122,18 +93,18 @@ make_window_with_example(const bench::CliOptions &opts) {
   switch (opts.backend) {
   case bench::Backend::CPU:
     return std::make_unique<bench::tvgexam::SwWindow>(
-        example.release(), opts.width, opts.height, opts.threads, opts.vsync,
+        example.release(), opts.width, opts.height, opts.vsync,
         "LinearGradientbench");
 
   case bench::Backend::GL:
     return std::make_unique<bench::tvgexam::GlWindow>(
-        example.release(), opts.width, opts.height, opts.threads, opts.vsync,
-        "LinearGradientbench");
+        example.release(), opts.width, opts.height, opts.vsync,
+        opts.gpu_sync, "LinearGradientbench");
 
   case bench::Backend::WebGPU:
     return std::make_unique<bench::tvgexam::WgWindow>(
-        example.release(), opts.width, opts.height, opts.threads,
-        opts.wgpu_external_device, "LinearGradientbench");
+        example.release(), opts.width, opts.height, opts.vsync,
+        opts.gpu_sync, "LinearGradientbench");
   }
 
   return nullptr;

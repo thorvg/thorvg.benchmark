@@ -7,10 +7,11 @@
 #include "benchmark_runner.hpp"
 #include "cli_parser.hpp"
 #include "rect_generator.hpp"
+#include "sha256.hpp"
 
 #include "tvg_sdl_example.hpp"
 
-#include <cmath>
+#include <algorithm>
 #include <cstdint>
 #include <iostream>
 #include <memory>
@@ -57,10 +58,15 @@ public:
     static_positions_ = bench::generate_static_rects(opts_.seed, rect_config_);
 
     // Load the base image once to get dimensions
-    const std::string image_path = find_image_path(opts_.image_ext);
+    image_path_ = find_image_path(opts_.image_ext);
+    asset_hash_ = bench::sha256_file(image_path_);
+    if (asset_hash_.empty()) {
+      std::cerr << "Failed to hash image asset: " << image_path_ << "\n";
+      return false;
+    }
     auto base_pic = tvg::Picture::gen();
-    if (base_pic->load(image_path.c_str()) != tvg::Result::Success) {
-      std::cerr << "Failed to load image: " << image_path << "\n";
+    if (base_pic->load(image_path_.c_str()) != tvg::Result::Success) {
+      std::cerr << "Failed to load image: " << image_path_ << "\n";
       return false;
     }
 
@@ -74,8 +80,9 @@ public:
     scaled_sizes_.reserve(static_positions_.size());
     for (const auto &pos : static_positions_) {
       auto pic = tvg::Picture::gen();
-      if (pic->load(image_path.c_str()) != tvg::Result::Success) {
-        continue;
+      if (pic->load(image_path_.c_str()) != tvg::Result::Success) {
+        std::cerr << "Failed to load image instance: " << image_path_ << "\n";
+        return false;
       }
 
       // Pre-scale to fit within bounds (same as Skia's base_scale)
@@ -109,54 +116,29 @@ public:
       transform_config.max_rotation_deg = 0.0f;
     }
 
-    if (opts_.scene_mode == bench::SceneMode::Default ||
-        opts_.scene_mode == bench::SceneMode::Rotation) {
-      auto transforms = bench::generate_transforms(
-          opts_.seed, frame_index, rect_config_.rect_count, transform_config);
+    auto transforms = bench::generate_transforms(
+        opts_.seed, frame_index, rect_config_.rect_count, transform_config);
 
-      constexpr float kDegToRad = 0.01745329251994329576923690768489f;
+    for (size_t i = 0; i < static_pictures_.size(); ++i) {
+      const auto &pos = static_positions_[i];
+      const auto &sz = scaled_sizes_[i];
 
-      for (size_t i = 0; i < static_pictures_.size() && i < transforms.size() &&
-                         i < static_positions_.size() && i < scaled_sizes_.size();
-           ++i) {
-        const auto &t = transforms[i];
-        const auto &pos = static_positions_[i];
-        const auto &sz = scaled_sizes_[i];
+      // Image is already pre-scaled, so only apply t.scale on top
+      const float cx = pos.x + pos.w * 0.5f;
+      const float cy = pos.y + pos.h * 0.5f;
 
-        // Image is already pre-scaled, so only apply t.scale on top
-        const float cx = pos.x + pos.w * 0.5f;
-        const float cy = pos.y + pos.h * 0.5f;
-
-        float a, b, c, d;
-        if (t.rotation_deg == 0.0f) {
-          a = t.scale;
-          b = 0.0f;
-          c = 0.0f;
-          d = t.scale;
-        } else {
-          const float rad = t.rotation_deg * kDegToRad;
-          const float cos_theta = std::cos(rad);
-          const float sin_theta = std::sin(rad);
-
-          a = cos_theta * t.scale;
-          b = -sin_theta * t.scale;
-          c = sin_theta * t.scale;
-          d = cos_theta * t.scale;
-        }
-
-        // Use the pre-scaled size for centering calculation
-        const float tx = t.dx + cx - (a * sz.w * 0.5f + b * sz.h * 0.5f);
-        const float ty = t.dy + cy - (c * sz.w * 0.5f + d * sz.h * 0.5f);
-
-        tvg::Matrix m = {a, b, tx, c, d, ty, 0, 0, 1};
-        static_pictures_[i]->transform(m);
-      }
-
-      canvas->update();
-      return true;
+      const auto affine = bench::centered_transform(
+          transforms[i], cx, cy, sz.w * 0.5f, sz.h * 0.5f);
+      tvg::Matrix m = {affine.a, affine.b, affine.tx, affine.c, affine.d,
+                       affine.ty, 0,        0,        1};
+      static_pictures_[i]->transform(m);
     }
-    return false;
+
+    canvas->update();
+    return true;
   }
+
+  const char *asset_hash() const override { return asset_hash_.c_str(); }
 
 private:
   struct ScaledSize {
@@ -164,6 +146,8 @@ private:
   };
   
   bench::CliOptions opts_;
+  std::string image_path_;
+  std::string asset_hash_;
   bench::RectGenConfig rect_config_{};
   float img_width_ = 0;
   float img_height_ = 0;
@@ -179,18 +163,18 @@ make_window_with_example(const bench::CliOptions &opts) {
   switch (opts.backend) {
   case bench::Backend::CPU:
     return std::make_unique<bench::tvgexam::SwWindow>(
-        example.release(), opts.width, opts.height, opts.threads, opts.vsync,
-        "Imagebench", tvg::EngineOption::None);
+        example.release(), opts.width, opts.height, opts.vsync,
+        "Imagebench");
 
   case bench::Backend::GL:
     return std::make_unique<bench::tvgexam::GlWindow>(
-        example.release(), opts.width, opts.height, opts.threads, opts.vsync,
-        "Imagebench");
+        example.release(), opts.width, opts.height, opts.vsync,
+        opts.gpu_sync, "Imagebench");
 
   case bench::Backend::WebGPU:
     return std::make_unique<bench::tvgexam::WgWindow>(
-        example.release(), opts.width, opts.height, opts.threads,
-        opts.wgpu_external_device, "Imagebench");
+        example.release(), opts.width, opts.height, opts.vsync,
+        opts.gpu_sync, "Imagebench");
   }
 
   return nullptr;
