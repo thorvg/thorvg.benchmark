@@ -1,0 +1,20 @@
+[package]
+name = "vello-bench"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+bench-common = { path = "../bench-common" }
+image = { version = "0.25.9", default-features = false, features = ["jpeg", "png"] }
+pollster = "0.4.0"
+sdl2 = { version = "0.38.0", features = ["use-pkgconfig", "raw-window-handle"] }
+vello = "=0.10.0"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+
+[workspace]
+resolver = "2"

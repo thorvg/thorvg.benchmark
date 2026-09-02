@@ -16,12 +16,14 @@ pub const DEFAULT_OBJECT_COUNT: u32 = 5_000;
 #[serde(rename_all = "lowercase")]
 pub enum Backend {
     Gl,
+    WebGpu,
 }
 
 impl Backend {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Gl => "gl",
+            Self::WebGpu => "webgpu",
         }
     }
 }
@@ -32,6 +34,7 @@ impl FromStr for Backend {
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value {
             "gl" => Ok(Self::Gl),
+            "webgpu" => Ok(Self::WebGpu),
             _ => Err(format!("invalid backend: {value}")),
         }
     }
@@ -219,9 +222,9 @@ fn parse_bool(key: &str, value: &str) -> Result<bool, String> {
 
 pub fn usage() -> String {
     format!(
-        "Usage: pathfinder-bench [options]\n\
+        "Usage: <pathfinder-bench|vello-bench> [options]\n\
          --benchmark={}\n\
-         --backend=gl --scene=default|rotation --image=png|jpg\n\
+         --backend=gl|webgpu --scene=default|rotation --image=png|jpg\n\
          --seed=INT --frames=INT --warmup=INT\n\
          --width=INT --height=INT --vsync=0|1 --gpu_sync=0|1\n\
          --output=PATH --capture=PATH",
