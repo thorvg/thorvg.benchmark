@@ -1,7 +1,7 @@
 build*/
 results*
 .cache*
-rust/target/
+rust/**/target/
 __pycache__/
 third_party/thorvg/
 .DS_Store

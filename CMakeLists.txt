@@ -9,6 +9,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 option(VGBENCH_ENABLE_SKIA "Build the Skia adapters" OFF)
 option(VGBENCH_ENABLE_THORVG "Build the ThorVG adapters" ON)
 option(VGBENCH_ENABLE_NANOVG "Build the NanoVG/OpenGL adapters" OFF)
+option(VGBENCH_ENABLE_PATHFINDER "Build the Pathfinder/GL3 adapter" OFF)
 option(VGBENCH_BUILD_THORVG_FROM_SOURCE
   "Build ThorVG from source instead of using pkg-config" OFF)
 
@@ -205,7 +206,46 @@ if(VGBENCH_ENABLE_NANOVG)
   endforeach()
 endif()
 
+if(VGBENCH_ENABLE_PATHFINDER)
+  find_program(VGBENCH_CARGO_EXECUTABLE cargo REQUIRED)
+
+  if(CMAKE_CONFIGURATION_TYPES)
+    set(VGBENCH_CARGO_PROFILE "$<IF:$<CONFIG:Debug>,dev,release>")
+    set(VGBENCH_CARGO_PROFILE_DIR "$<IF:$<CONFIG:Debug>,debug,release>")
+  elseif(CMAKE_BUILD_TYPE MATCHES "^(Release|RelWithDebInfo|MinSizeRel)$")
+    set(VGBENCH_CARGO_PROFILE release)
+    set(VGBENCH_CARGO_PROFILE_DIR release)
+  else()
+    set(VGBENCH_CARGO_PROFILE dev)
+    set(VGBENCH_CARGO_PROFILE_DIR debug)
+  endif()
+  set(VGBENCH_CARGO_TARGET_DIR "${CMAKE_BINARY_DIR}/cargo-target")
+
+  function(add_rust_benchmark PACKAGE_NAME)
+    string(REPLACE "-" "_" TARGET_ID "${PACKAGE_NAME}")
+    set(OUTPUT_PATH "${CMAKE_BINARY_DIR}/${PACKAGE_NAME}${CMAKE_EXECUTABLE_SUFFIX}")
+    set(CARGO_PATH
+      "${VGBENCH_CARGO_TARGET_DIR}/${VGBENCH_CARGO_PROFILE_DIR}/${PACKAGE_NAME}${CMAKE_EXECUTABLE_SUFFIX}")
+    # Cargo owns the full dependency graph (including build scripts and embedded
+    # resources), so let its fingerprinting decide whether work is required.
+    add_custom_target(${TARGET_ID}_rust ALL
+      COMMAND "${CMAKE_COMMAND}" -E env
+              "CARGO_TARGET_DIR=${VGBENCH_CARGO_TARGET_DIR}"
+              "${VGBENCH_CARGO_EXECUTABLE}" build --locked
+              --manifest-path "${CMAKE_SOURCE_DIR}/rust/${PACKAGE_NAME}/Cargo.toml"
+              --profile "${VGBENCH_CARGO_PROFILE}"
+      COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${CARGO_PATH}" "${OUTPUT_PATH}"
+      BYPRODUCTS "${OUTPUT_PATH}"
+      WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/rust/${PACKAGE_NAME}"
+      VERBATIM COMMENT "Building ${PACKAGE_NAME} with Cargo --locked"
+    )
+  endfunction()
+
+  add_rust_benchmark(pathfinder-bench)
+endif()
+
 message(STATUS "=== vgbench configuration ===")
 message(STATUS "Skia:       ${VGBENCH_ENABLE_SKIA}")
 message(STATUS "ThorVG:     ${VGBENCH_ENABLE_THORVG}")
 message(STATUS "NanoVG:     ${VGBENCH_ENABLE_NANOVG}")
+message(STATUS "Pathfinder: ${VGBENCH_ENABLE_PATHFINDER}")
