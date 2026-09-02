@@ -33,6 +33,16 @@
 
 #include <cstdint>
 #include <iostream>
+#include <string>
+#include <vector>
+
+#ifndef VGBENCH_SKIA_VERSION
+#define VGBENCH_SKIA_VERSION "unknown"
+#endif
+
+#ifndef VGBENCH_SKIA_REVISION
+#define VGBENCH_SKIA_REVISION "unknown"
+#endif
 
 namespace bench::skiaexam {
 
@@ -46,6 +56,7 @@ struct Example {
     return false;
   }
   virtual bool draw(SkCanvas *canvas) = 0;
+  virtual const char *asset_hash() const { return ""; }
 
   virtual ~Example() = default;
 };
@@ -364,6 +375,9 @@ struct Window : bench::BenchmarkWindow {
     if (!example->content(canvas, width, height)) {
       return false;
     }
+    if (!update(0)) {
+      return false;
+    }
     return draw();
   }
 
@@ -389,6 +403,12 @@ struct Window : bench::BenchmarkWindow {
 
   const char *engine_id() const override { return "skia"; }
   const char *engine_title() const override { return "Skia"; }
+  const char *engine_version() const override { return VGBENCH_SKIA_VERSION; }
+  const char *engine_revision() const override { return VGBENCH_SKIA_REVISION; }
+  const char *scene_model() const override { return "immediate"; }
+  const char *asset_hash() const override {
+    return example ? example->asset_hash() : "";
+  }
 
 protected:
   virtual SkCanvas *sk_canvas() = 0;
@@ -456,6 +476,13 @@ struct SwWindow final : Window {
 
   const char *backend_id() const override { return "cpu"; }
   const char *backend_title() const override { return "CPU"; }
+  const char *graphics_api() const override { return "CPU"; }
+  const char *present_mode() const override { return "software"; }
+  const char *pixel_format() const override { return "RGBA8"; }
+
+  bool capture(const std::string &path) override {
+    return bench::write_ppm_sdl_surface(path, surface);
+  }
 
 protected:
   SkCanvas *sk_canvas() override {
@@ -470,8 +497,16 @@ struct GlWindow final : Window {
   sk_sp<GrDirectContext> gr_context;
   sk_sp<SkSurface> surface;
 
+  bool actual_vsync = false;
+  bool verified_vsync = false;
+  std::string present_mode_ = "unknown";
+  std::string gpu_device_ = "unknown";
+  std::string gpu_vendor_ = "unknown";
+  std::string gpu_driver_ = "unknown";
+
   GlWindow(Example *example, uint32_t target_width, uint32_t target_height,
-           bool vsync, const std::string &window_title = "Benchmark")
+           bool vsync,
+           const std::string &window_title = "Benchmark")
       : Window(example, target_width, target_height, window_title) {
     if (!initialized) {
       return;
@@ -483,9 +518,15 @@ struct GlWindow final : Window {
                         SDL_GL_CONTEXT_PROFILE_CORE);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS,
                         SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
+    SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
+    SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
+    SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
+    SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 8);
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+    SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 0);
+    SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 0);
 
     std::string title = window_title_ + " Skia (OpenGL)";
     window = bench::create_centered_window(
@@ -503,12 +544,40 @@ struct GlWindow final : Window {
       return;
     }
 
-    SDL_GL_SetSwapInterval(vsync ? 1 : 0);
+    const bool swap_result = SDL_GL_SetSwapInterval(vsync ? 1 : 0);
+    int swap_interval = 0;
+    const bool swap_query = SDL_GL_GetSwapInterval(&swap_interval);
+    actual_vsync = swap_interval != 0;
+    verified_vsync = swap_result && swap_query && actual_vsync == vsync;
+    if (swap_query) {
+      if (swap_interval == 0) {
+        present_mode_ = "immediate";
+      } else if (swap_interval == -1) {
+        present_mode_ = "adaptive-fifo";
+      } else {
+        present_mode_ = "fifo";
+      }
+    }
+    if (!verified_vsync) {
+      std::cerr << "Unable to verify requested GL swap interval "
+                << (vsync ? 1 : 0) << "; actual=" << swap_interval << ": "
+                << SDL_GetError() << "\n";
+    }
+    if (!bench::verify_gl33_core_context("Skia")) {
+      return;
+    }
 
     auto dims = bench::adjust_window_for_hidpi(window, target_width,
                                                    target_height, true);
     width = static_cast<uint32_t>(dims.drawable_w);
     height = static_cast<uint32_t>(dims.drawable_h);
+
+    const auto *renderer = glGetString(GL_RENDERER);
+    const auto *vendor = glGetString(GL_VENDOR);
+    const auto *version = glGetString(GL_VERSION);
+    if (renderer) gpu_device_ = reinterpret_cast<const char *>(renderer);
+    if (vendor) gpu_vendor_ = reinterpret_cast<const char *>(vendor);
+    if (version) gpu_driver_ = reinterpret_cast<const char *>(version);
 
     gl_interface = GrGLMakeNativeInterface();
     if (!gl_interface || !gl_interface->validate()) {
@@ -605,6 +674,34 @@ struct GlWindow final : Window {
 
   const char *backend_id() const override { return "gl"; }
   const char *backend_title() const override { return "OpenGL"; }
+  const char *graphics_api() const override { return "OpenGL"; }
+  const char *gpu_device() const override { return gpu_device_.c_str(); }
+  const char *gpu_vendor() const override { return gpu_vendor_.c_str(); }
+  const char *gpu_driver() const override { return gpu_driver_.c_str(); }
+  const char *gpu_completion() const override {
+    return "none";
+  }
+  const char *present_mode() const override { return present_mode_.c_str(); }
+  const char *pixel_format() const override { return "RGBA8"; }
+  bool vsync_actual() const override { return actual_vsync; }
+  bool vsync_verified() const override { return verified_vsync; }
+
+  bool capture(const std::string &path) override {
+    if (!context || width == 0 || height == 0) {
+      return false;
+    }
+    std::vector<uint8_t> pixels(static_cast<size_t>(width) * height * 4u);
+#ifdef GL_BACK
+    glReadBuffer(GL_BACK);
+#endif
+    glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    glReadPixels(0, 0, static_cast<GLsizei>(width),
+                 static_cast<GLsizei>(height), GL_RGBA, GL_UNSIGNED_BYTE,
+                 pixels.data());
+    return bench::write_ppm_rgba(path, pixels.data(), width, height,
+                                 static_cast<size_t>(width) * 4u,
+                                 /*flip_y=*/true);
+  }
 
 protected:
   SkCanvas *sk_canvas() override {

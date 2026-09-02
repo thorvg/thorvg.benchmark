@@ -85,27 +85,11 @@ public:
 
     for (size_t i = 0; i < static_paths_.size(); ++i) {
       const auto &shape = static_shapes_[i];
-      const auto &t = transforms[i];
       const float cx = shape.x + shape.w * 0.5f;
       const float cy = shape.y + shape.h * 0.5f;
-      float a, b, c, d;
-      if (t.rotation_deg == 0.0f) {
-        a = t.scale;
-        b = 0.0f;
-        c = 0.0f;
-        d = t.scale;
-      } else {
-        const float rad = t.rotation_deg * bench::kDegToRad;
-        const float cos_theta = std::cos(rad);
-        const float sin_theta = std::sin(rad);
-        a = cos_theta * t.scale;
-        b = -sin_theta * t.scale;
-        c = sin_theta * t.scale;
-        d = cos_theta * t.scale;
-      }
-      const float tx = t.dx + cx - (a * cx + b * cy);
-      const float ty = t.dy + cy - (c * cx + d * cy);
-      static_paths_[i]->transform({a, b, tx, c, d, ty, 0, 0, 1});
+      const auto affine = bench::centered_transform(transforms[i], cx, cy);
+      static_paths_[i]->transform({affine.a, affine.b, affine.tx,
+                                   affine.c, affine.d, affine.ty, 0, 0, 1});
     }
     canvas->update();
     return true;
@@ -133,7 +117,7 @@ make_window_with_example(const bench::CliOptions &opts) {
           "Strokebench");
   case bench::Backend::WebGPU:
     return std::make_unique<bench::tvgexam::WgWindow>(
-        example.release(), opts.width, opts.height, opts.threads,
+        example.release(), opts.width, opts.height, opts.threads, opts.vsync,
         opts.wgpu_external_device, "Strokebench");
   }
   return nullptr;

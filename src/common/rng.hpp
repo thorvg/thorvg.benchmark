@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cmath>
 #include <cstdint>
 
 namespace bench {
@@ -46,7 +47,7 @@ public:
 
     /// Generate a random float in the range [min, max)
     float next_float(float min_val, float max_val) {
-        return min_val + next_float_01() * (max_val - min_val);
+        return std::fma(next_float_01(), max_val - min_val, min_val);
     }
 
     /// Generate a random integer in the range [min, max] inclusive

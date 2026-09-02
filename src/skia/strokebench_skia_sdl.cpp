@@ -78,31 +78,15 @@ void draw_designer_strokes_skia(
 
   for (size_t i = 0; i < shapes.size(); ++i) {
     const auto &shape = shapes[i];
-    const auto &t = transforms[i];
     paint.setColor(SkColorSetARGB(alpha, shape.r, shape.g, shape.b));
     paint.setStrokeWidth(shape.stroke_width);
 
     const float cx = shape.x + shape.w * 0.5f;
     const float cy = shape.y + shape.h * 0.5f;
-    float a, b, c, d;
-    if (t.rotation_deg == 0.0f) {
-      a = t.scale;
-      b = 0.0f;
-      c = 0.0f;
-      d = t.scale;
-    } else {
-      const float rad = t.rotation_deg * bench::kDegToRad;
-      const float cos_theta = std::cos(rad);
-      const float sin_theta = std::sin(rad);
-      a = cos_theta * t.scale;
-      b = -sin_theta * t.scale;
-      c = sin_theta * t.scale;
-      d = cos_theta * t.scale;
-    }
-    const float tx = t.dx + cx - (a * cx + b * cy);
-    const float ty = t.dy + cy - (c * cx + d * cy);
+    const auto affine = bench::centered_transform(transforms[i], cx, cy);
     SkMatrix matrix;
-    matrix.setAll(a, b, tx, c, d, ty, 0, 0, 1);
+    matrix.setAll(affine.a, affine.b, affine.tx, affine.c, affine.d, affine.ty, 0,
+                  0, 1);
 
     canvas->save();
     canvas->concat(matrix);

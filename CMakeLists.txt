@@ -88,8 +88,8 @@ if(VGBENCH_ENABLE_SKIA)
   set(VGBENCH_SKIA_REVISION "unknown" CACHE STRING "Skia revision metadata")
 
   function(add_skia_benchmark WORKLOAD)
-    set(TARGET_NAME "${WORKLOAD}bench_skia_sdl")
-    add_executable(${TARGET_NAME} "src/skia/${TARGET_NAME}.cpp")
+    set(TARGET_NAME "${WORKLOAD}_skia_sdl")
+    add_executable(${TARGET_NAME} "src/skia/${WORKLOAD}bench_skia_sdl.cpp")
     target_compile_definitions(${TARGET_NAME} PRIVATE
       VGBENCH_SKIA_VERSION="${VGBENCH_SKIA_VERSION}"
       VGBENCH_SKIA_REVISION="${VGBENCH_SKIA_REVISION}"
@@ -173,8 +173,8 @@ if(VGBENCH_ENABLE_THORVG)
     CACHE STRING "ThorVG revision metadata")
 
   function(add_thorvg_benchmark WORKLOAD)
-    set(TARGET_NAME "${WORKLOAD}bench_thorvg_sdl")
-    add_executable(${TARGET_NAME} "src/thorvg/${TARGET_NAME}.cpp")
+    set(TARGET_NAME "${WORKLOAD}_tvg_sdl")
+    add_executable(${TARGET_NAME} "src/thorvg/${WORKLOAD}bench_thorvg_sdl.cpp")
     target_compile_definitions(${TARGET_NAME} PRIVATE
       VGBENCH_THORVG_VERSION="${VGBENCH_THORVG_VERSION}"
       VGBENCH_THORVG_REVISION="${VGBENCH_THORVG_REVISION}"

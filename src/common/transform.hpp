@@ -1,6 +1,7 @@
 #pragma once
 
 #include "rng.hpp"
+#include <cmath>
 #include <cstdint>
 #include <vector>
 
@@ -15,6 +16,43 @@ struct TransformData {
   float rotation_deg; // Rotation in degrees (bounded)
   float scale;        // Uniform scale factor (bounded)
 };
+
+/// Row-major components of a 2D affine transform.
+struct Affine2D {
+  float a, b, tx;
+  float c, d, ty;
+};
+
+inline Affine2D linear_transform(const TransformData &transform,
+                                 float extra_scale = 1.0f) {
+  const float scale = transform.scale * extra_scale;
+  if (transform.rotation_deg == 0.0f) {
+    return {scale, 0.0f, 0.0f, 0.0f, scale, 0.0f};
+  }
+
+  const float radians = transform.rotation_deg * kDegToRad;
+  const float cos_theta = std::cos(radians);
+  const float sin_theta = std::sin(radians);
+  return {cos_theta * scale, -sin_theta * scale, 0.0f,
+          sin_theta * scale, cos_theta * scale,  0.0f};
+}
+
+inline Affine2D centered_transform(const TransformData &transform,
+                                   float target_cx, float target_cy,
+                                   float source_cx, float source_cy,
+                                   float extra_scale = 1.0f) {
+  auto affine = linear_transform(transform, extra_scale);
+  affine.tx =
+      transform.dx + target_cx - (affine.a * source_cx + affine.b * source_cy);
+  affine.ty =
+      transform.dy + target_cy - (affine.c * source_cx + affine.d * source_cy);
+  return affine;
+}
+
+inline Affine2D centered_transform(const TransformData &transform, float cx,
+                                   float cy) {
+  return centered_transform(transform, cx, cy, cx, cy);
+}
 
 /// Configuration for transform generation
 struct TransformGenConfig {

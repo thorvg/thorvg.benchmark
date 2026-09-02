@@ -63,6 +63,7 @@ inline void record(const std::string &call) {
   calls.push_back(call);
   if (call == "update" || call == "draw" || call == "submit" || call == "present")
     elapsed += std::chrono::milliseconds(1);
+  if (call == "wait") elapsed += std::chrono::milliseconds(10);
 }
 struct AdapterWindow : bench::BenchmarkWindow {
   bool pump_events(bool &running) override { return running; }
@@ -174,9 +175,13 @@ struct GlWindow : Window {
     parts.append(_method(root, thorvg, "GlWindow", "refresh"))
     parts.append(r'''};
 struct WgWindow : Window {
-  struct WgpuContext { void present() { adapter_test::record("present"); } } wgpu;
+  const char *gpu_completion() const override { return "queue.onSubmittedWorkDone"; }
+  struct WgpuContext {
+    void present() { adapter_test::record("present"); }
+    bool finish() { adapter_test::record("wait"); return true; }
+  } wgpu;
 ''')
-    parts.append(_method(root, thorvg, "WgWindow", "refresh"))
+    parts.extend(_method(root, thorvg, "WgWindow", method) for method in ("refresh", "finish_gpu"))
     parts.append("};\n}\n")
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)

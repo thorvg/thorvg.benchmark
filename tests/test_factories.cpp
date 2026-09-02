@@ -90,9 +90,9 @@ struct GlWindow : Window
 struct WgWindow : Window
 {
     WgWindow(Example* example, uint32_t width, uint32_t height,
-             uint32_t threads, bool external_device,
+             uint32_t threads, bool vsync, bool external_device,
              const std::string& = "Benchmark") :
-        Window(example, Backend::WebGPU, width, height, threads, false,
+        Window(example, Backend::WebGPU, width, height, threads, vsync,
                external_device) {}
 };
 }  // namespace bench::tvgexam
@@ -136,13 +136,17 @@ void test_factory(const factory_test::Factory& factory)
             if (factory.thorvg) CHECK(cpu->vsync == opts.vsync);
         }
         opts.backend = bench::Backend::WebGPU;
-        for (bool external : {false, true}) {
-            opts.wgpu_external_device = external;
-            const auto webgpu = factory.make(opts);
-            CHECK(static_cast<bool>(webgpu) == factory.thorvg);
-            if (webgpu) {
-                check_common(*webgpu, opts, factory.thorvg);
-                CHECK(webgpu->external_device == external);
+        for (bool vsync : {false, true}) {
+            opts.vsync = vsync;
+            for (bool external : {false, true}) {
+                opts.wgpu_external_device = external;
+                const auto webgpu = factory.make(opts);
+                CHECK(static_cast<bool>(webgpu) == factory.thorvg);
+                if (webgpu) {
+                    check_common(*webgpu, opts, factory.thorvg);
+                    CHECK(webgpu->vsync == vsync);
+                    CHECK(webgpu->external_device == external);
+                }
             }
         }
     }

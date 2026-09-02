@@ -198,9 +198,8 @@ bench::CliOptions options_for(const std::filesystem::path& output,
     options.scene_mode = bench::SceneMode::Rotation;
     options.opacity = 0.375f;
     options.vsync = true;
-    // Metadata must describe the actual drawable dimensions from the window.
-    options.width = 640;
-    options.height = 480;
+    options.width = 320;
+    options.height = 180;
     return options;
 }
 
@@ -272,14 +271,15 @@ void test_complete_timing_and_metadata(const std::filesystem::path& directory)
     CHECK_NEAR(number(json, "stddev_ms"), std::sqrt(20.0), 0.000001);
     CHECK_NEAR(number(json, "fps"), 100.0, 0.000001);
     CHECK(number(json, "seed") == 9876543210123.0);
-    CHECK(number(json, "rect_count") == 5000.0);
+    CHECK(number(json, "object_count") == 5000.0);
     CHECK(number(json, "warmup_frames") == 2.0);
     CHECK(number(json, "measured_frames") == 4.0);
     CHECK_NEAR(number(json, "opacity"), 0.375, 0.000001);
     CHECK(json.find("\"engine\": \"fixture-engine\"") != std::string::npos);
     CHECK(json.find("\"backend\": \"fixture-cpu\"") != std::string::npos);
     CHECK(json.find("\"resolution\": \"320x180\"") != std::string::npos);
-    CHECK(json.find("\"vsync\": true") != std::string::npos);
+    CHECK(json.find("\"requested_resolution\": \"320x180\"") != std::string::npos);
+    CHECK(json.find("\"vsync_requested\": true") != std::string::npos);
     CHECK(json.find("\"scene_mode\": \"rotation\"") != std::string::npos);
     CHECK(json.find("\"workload\": \"designer-strokes-v1\"") != std::string::npos);
 }
@@ -340,6 +340,24 @@ void test_ready_failure(const std::filesystem::path& directory)
     CHECK(window.updated.empty());
     CHECK(FakeClock::now_calls == 0);
     CHECK(window.trace == std::vector<std::string>{"ready"});
+    CHECK(read_file(output) == "previous complete result\n");
+}
+
+void test_drawable_mismatch(const std::filesystem::path& directory)
+{
+    const auto output = directory / "drawable-mismatch.json";
+    write_sentinel(output);
+    RecordingWindow window;
+    auto options = options_for(output, 1, 3);
+    options.width = 640;
+    options.height = 480;
+    const auto result = run(window, options);
+    CHECK(result.status != 0);
+    CHECK(result.errors.find("Requested drawable 640x480 but adapter created 320x180") != std::string::npos);
+    CHECK(window.ready_calls == 0);
+    CHECK(window.event_calls == 0);
+    CHECK(window.updated.empty());
+    CHECK(FakeClock::now_calls == 0);
     CHECK(read_file(output) == "previous complete result\n");
 }
 
@@ -428,6 +446,7 @@ int main()
         test_no_warmup_single_frame(directory.path);
         test_invalid_frame_counts(directory.path);
         test_ready_failure(directory.path);
+        test_drawable_mismatch(directory.path);
         test_cancellation(directory.path);
         test_frame_failures(directory.path);
         test_output_open_failure(directory.path);

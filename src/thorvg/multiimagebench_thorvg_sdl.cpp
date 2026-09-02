@@ -144,7 +144,7 @@ make_window_with_example(const bench::CliOptions &opts) {
           "MultiImagebench");
   case bench::Backend::WebGPU:
     return std::make_unique<bench::tvgexam::WgWindow>(
-        example.release(), opts.width, opts.height, opts.threads,
+        example.release(), opts.width, opts.height, opts.threads, opts.vsync,
         opts.wgpu_external_device, "MultiImagebench");
   }
   return nullptr;

@@ -140,11 +140,16 @@ struct CaptureOutput
 };
 
 std::vector<std::string> run_timed_adapter(bench::BenchmarkWindow& window,
-                                           const std::filesystem::path& output)
+                                           const std::filesystem::path& output,
+                                           bench::Backend backend = bench::Backend::GL)
 {
+    const bool waits = backend == bench::Backend::WebGPU;
     bench::CliOptions options;
+    options.backend = backend;
     options.warmup = 1;
     options.frames = 2;
+    options.width = 320;
+    options.height = 180;
     options.output_path = output.string();
     reset_calls();
     FakeClock::now_calls = 0;
@@ -153,25 +158,31 @@ std::vector<std::string> run_timed_adapter(bench::BenchmarkWindow& window,
         CHECK(bench::run_benchmark<FakeClock>(options, window, "timed-sync") == 0);
     }
 
-    std::vector<std::string> expected = {"content", "draw", "submit"};
+    std::vector<std::string> expected = {"content", "update", "draw", "submit"};
+    if (waits) expected.push_back("wait");
     for (int frame = 0; frame < 3; ++frame) {
-        expected.insert(expected.end(), {"timer_start", "update", "draw", "submit"});
-        expected.insert(expected.end(), {"present", "timer_stop"});
+        expected.insert(expected.end(), {"timer_start", "update", "draw", "submit", "present"});
+        if (waits) expected.push_back("wait");
+        expected.push_back("timer_stop");
     }
     CHECK(normalized_calls() == expected);
     CHECK(FakeClock::now_calls == 6);
-    CHECK(adapter_test::elapsed.count() == 14);
+    CHECK(adapter_test::elapsed.count() == (waits ? 55 : 15));
 
     std::ifstream file(output);
     CHECK(file.is_open());
     const std::string json{std::istreambuf_iterator<char>(file),
                            std::istreambuf_iterator<char>()};
-    const double expected_ms = 4.0;
+    const double expected_ms = waits ? 14.0 : 4.0;
     CHECK_NEAR(json_number(json, "avg_ms"), expected_ms, 0.000001);
     CHECK_NEAR(json_number(json, "min_ms"), expected_ms, 0.000001);
     CHECK_NEAR(json_number(json, "max_ms"), expected_ms, 0.000001);
     CHECK(json_number(json, "warmup_frames") == 1);
     CHECK(json_number(json, "measured_frames") == 2);
+    CHECK(json.find(waits ? "\"gpu_completion\": \"queue.onSubmittedWorkDone\""
+                          : "\"gpu_completion\": \"none\"") != std::string::npos);
+    CHECK(json.find(waits ? "\"timing_mode\": \"onscreen_gpu_complete\""
+                          : "\"timing_mode\": \"diagnostic_submit\"") != std::string::npos);
     return normalized_calls();
 }
 
@@ -182,21 +193,25 @@ void test_gl_timing_inside_runner()
     if (directory.path.empty()) return;
     SkiaGlFixture skia;
     const auto skia_trace = run_timed_adapter(skia.window, directory.path / "skia.json");
-    CHECK(skia.example.updated_frames == std::vector<uint32_t>({0, 1, 2}));
+    CHECK(skia.example.updated_frames == std::vector<uint32_t>({0, 0, 1, 2}));
 
     ThorvgGlFixture thorvg;
     const auto thorvg_trace = run_timed_adapter(thorvg.window, directory.path / "thorvg.json");
-    CHECK(thorvg.example.updated_frames == std::vector<uint32_t>({0, 1, 2}));
+    CHECK(thorvg.example.updated_frames == std::vector<uint32_t>({0, 0, 1, 2}));
     CHECK(thorvg.canvas.clear_values == std::vector<bool>({false, true, true, true}));
     CHECK(thorvg.window.clearBuffer);
     CHECK(skia_trace == thorvg_trace);
+
+    ThorvgFixture<bench::tvgexam::WgWindow> webgpu;
+    run_timed_adapter(webgpu.window, directory.path / "webgpu.json", bench::Backend::WebGPU);
+    CHECK(webgpu.example.updated_frames == std::vector<uint32_t>({0, 0, 1, 2}));
 }
 
 void test_gl_policy_parity()
 {
     SkiaGlFixture skia;
     ThorvgGlFixture thorvg;
-    std::vector<std::string> initial = {"content", "draw", "submit"};
+    std::vector<std::string> initial = {"content", "update", "draw", "submit"};
     std::vector<std::string> frame = {"update", "draw", "submit", "present"};
 
     reset_calls();
@@ -220,6 +235,7 @@ void test_gl_policy_parity()
     CHECK(skia.window.update(41));
     CHECK(skia.window.draw());
     skia.window.refresh();
+    CHECK(skia.window.finish_gpu());
     CHECK(normalized_calls() == frame);
     CHECK(skia.example.elapsed == 41 && skia.example.last_frame == 41);
     CHECK(adapter_test::calls.size() >= 3);
@@ -233,6 +249,7 @@ void test_gl_policy_parity()
     CHECK(thorvg.window.update(41));
     CHECK(thorvg.window.draw());
     thorvg.window.refresh();
+    CHECK(thorvg.window.finish_gpu());
     CHECK(normalized_calls() == frame);
     CHECK(normalized_calls() == skia_frame);
     CHECK(thorvg.example.elapsed == 41 && thorvg.example.last_frame == 41);
@@ -289,12 +306,15 @@ void test_skia_failures()
     example.draw_result = false;
     reset_calls();
     CHECK(!window.ready());
-    CHECK(normalized_calls() == std::vector<std::string>({"content", "draw"}));
+    CHECK(normalized_calls() == std::vector<std::string>({"content", "update", "draw"}));
     reset_calls();
     CHECK(!window.draw());
     CHECK(normalized_calls() == std::vector<std::string>({"draw"}));
 
     example.update_result = false;
+    reset_calls();
+    CHECK(!window.ready());
+    CHECK(normalized_calls() == std::vector<std::string>({"content", "update"}));
     reset_calls();
     CHECK(!window.update(77));
     CHECK(example.elapsed == 77 && example.last_frame == 77);
@@ -335,7 +355,7 @@ void test_thorvg_failures()
     CHECK(adapter_test::calls == std::vector<std::string>({"draw"}));
     reset_calls();
     CHECK(!window.ready());
-    CHECK(adapter_test::calls == std::vector<std::string>({"content", "draw"}));
+    CHECK(adapter_test::calls == std::vector<std::string>({"content", "update", "draw"}));
     CHECK(window.clearBuffer);
     CHECK(!canvas.clear_values.empty() && !canvas.clear_values.back());
 
@@ -346,7 +366,7 @@ void test_thorvg_failures()
     CHECK(adapter_test::calls == std::vector<std::string>({"draw", "submit"}));
     reset_calls();
     CHECK(!window.ready());
-    CHECK(adapter_test::calls == std::vector<std::string>({"content", "draw", "submit"}));
+    CHECK(adapter_test::calls == std::vector<std::string>({"content", "update", "draw", "submit"}));
     CHECK(window.clearBuffer);
     CHECK(!canvas.clear_values.empty() && !canvas.clear_values.back());
 
@@ -359,6 +379,9 @@ void test_thorvg_failures()
     CHECK(!window.clearBuffer);
 
     example.update_result = false;
+    reset_calls();
+    CHECK(!window.ready());
+    CHECK(normalized_calls() == std::vector<std::string>({"content", "update"}));
     reset_calls();
     CHECK(!window.update(77));
     CHECK(example.elapsed == 77 && example.last_frame == 77);
@@ -375,7 +398,7 @@ void test_cpu_and_webgpu()
     skia.sk_surface = std::make_shared<SkSurface>();
     reset_calls();
     CHECK(skia.ready());
-    CHECK(adapter_test::calls == std::vector<std::string>({"content", "draw"}));
+    CHECK(adapter_test::calls == std::vector<std::string>({"content", "update", "draw"}));
     reset_calls();
     CHECK(skia.update(5));
     CHECK(skia.draw());
@@ -393,7 +416,7 @@ void test_cpu_and_webgpu()
     ThorvgFixture<bench::tvgexam::SwWindow> thorvg;
     reset_calls();
     CHECK(thorvg.window.ready());
-    CHECK(adapter_test::calls == std::vector<std::string>({"content", "draw", "submit"}));
+    CHECK(adapter_test::calls == std::vector<std::string>({"content", "update", "draw", "submit"}));
     CHECK(thorvg.canvas.clear_values == std::vector<bool>({false}));
     reset_calls();
     CHECK(thorvg.window.update(5));
@@ -409,12 +432,13 @@ void test_cpu_and_webgpu()
     ThorvgFixture<bench::tvgexam::WgWindow> webgpu;
     reset_calls();
     CHECK(webgpu.window.ready());
-    CHECK(adapter_test::calls == std::vector<std::string>({"content", "draw", "submit"}));
+    CHECK(adapter_test::calls == std::vector<std::string>({"content", "update", "draw", "submit"}));
     reset_calls();
     CHECK(webgpu.window.update(6));
     CHECK(webgpu.window.draw());
     webgpu.window.refresh();
-    CHECK(adapter_test::calls == std::vector<std::string>({"update", "draw", "submit", "present"}));
+    CHECK(webgpu.window.finish_gpu());
+    CHECK(adapter_test::calls == std::vector<std::string>({"update", "draw", "submit", "present", "wait"}));
     CHECK(webgpu.example.last_frame == 6 && webgpu.example.elapsed == 6);
 }
 

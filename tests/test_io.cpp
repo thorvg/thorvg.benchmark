@@ -135,6 +135,7 @@ void test_cli_validation()
              InvalidOption{"--scene=spin", "Invalid scene mode: spin"},
              InvalidOption{"--image=gif", "Invalid image type: gif"},
              InvalidOption{"--unknown=1", "Unknown option: --unknown=1"},
+             InvalidOption{"--gpu_sync=1", "Unknown option: --gpu_sync=1"},
              InvalidOption{"--frames", "Unknown option: --frames"}}) {
         const auto options = parse({invalid.argument});
         CHECK(!options.valid);
@@ -215,15 +216,17 @@ void test_json_output()
     CHECK(bench::json_escape("\"\\\n\r\t") == "\\\"\\\\\\n\\r\\t");
 
     bench::BenchmarkMetadata metadata;
+    metadata.benchmark = "stroke";
     metadata.engine = "thorvg";
     metadata.backend = "gl";
+    metadata.scene_mode = "default";
     CHECK(std::regex_match(bench::get_timestamp(), std::regex("[0-9]{8}_[0-9]{6}")));
     CHECK(std::regex_match(bench::get_default_output_path(metadata),
-                           std::regex("\\./results_thorvg_gl_[0-9]{8}_[0-9]{6}\\.json")));
+                           std::regex("\\./results_stroke_thorvg_gl_default_[0-9]{8}_[0-9]{6}\\.json")));
     metadata.engine = "skia";
     metadata.backend = "cpu";
     CHECK(std::regex_match(bench::get_default_output_path(metadata),
-                           std::regex("\\./results_skia_cpu_[0-9]{8}_[0-9]{6}\\.json")));
+                           std::regex("\\./results_stroke_skia_cpu_default_[0-9]{8}_[0-9]{6}\\.json")));
 
     bench::BenchmarkStats stats;
     stats.avg_ms = 1.25;
@@ -237,10 +240,10 @@ void test_json_output()
     metadata.engine = "engine\"name";
     metadata.backend = "back\\end";
     metadata.seed = UINT64_C(9876543210123);
-    metadata.rect_count = 17;
+    metadata.object_count = 17;
     metadata.width = 320;
     metadata.height = 180;
-    metadata.vsync = true;
+    metadata.vsync_requested = true;
     metadata.scene_mode = "scene\nmode";
     metadata.warmup_frames = 7;
     metadata.measured_frames = 23;
@@ -253,6 +256,9 @@ void test_json_output()
     const auto output = directory.path / "results.json";
     CHECK(bench::write_results(output.string(), stats, metadata));
     const std::string expected = R"({
+  "schema_version": 2,
+  "status": "passed",
+  "comparable": true,
   "stats": {
     "avg_ms": 1.250000,
     "median_ms": 1.125000,
@@ -263,31 +269,49 @@ void test_json_output()
     "stddev_ms": 0.625000,
     "fps": 800.000000
   },
+  "frame_times_ms": [],
   "metadata": {
+    "benchmark": "stroke",
     "engine": "engine\"name",
+    "engine_version": "unknown",
+    "engine_revision": "unknown",
+    "scene_model": "unknown",
     "backend": "back\\end",
+    "graphics_api": "unknown",
+    "gpu_device": "unknown",
+    "gpu_vendor": "unknown",
+    "gpu_driver": "unknown",
+    "gpu_completion": "none",
+    "timing_mode": "onscreen_gpu_complete",
     "seed": 9876543210123,
-    "rect_count": 17,
+    "object_count": 17,
     "resolution": "320x180",
-    "vsync": true,
+    "requested_resolution": "2560x1440",
+    "pixel_format": "unknown",
+    "vsync_requested": true,
+    "vsync_actual": false,
+    "present_mode": "unknown",
     "scene_mode": "scene\nmode",
     "warmup_frames": 7,
     "measured_frames": 23,
     "workload": "stroke\r\twork",
-    "opacity": 0.375000
+    "opacity": 0.375000,
+    "build_type": "unknown",
+    "asset_hash": ""
   }
 }
 )";
     CHECK(read_file(output) == expected);
 
     metadata.workload.clear();
-    metadata.vsync = false;
+    metadata.vsync_requested = false;
     CHECK(bench::write_results(output.string(), stats, metadata));
     const std::string without_workload = read_file(output);
-    CHECK(without_workload.find("\"vsync\": false") != std::string::npos);
+    CHECK(without_workload.find("\"vsync_requested\": false") != std::string::npos);
     CHECK(without_workload.find("\"workload\"") == std::string::npos);
     CHECK(without_workload.find("\"opacity\"") == std::string::npos);
-    CHECK(without_workload.find("\"measured_frames\": 23\n  }\n}\n") != std::string::npos);
+    CHECK(without_workload.find("\"measured_frames\": 23,\n") != std::string::npos);
+    CHECK(without_workload.find("\"asset_hash\": \"\"\n  }\n}\n") != std::string::npos);
 
     const auto impossible = directory.path / "missing-parent" / "results.json";
     CHECK(!bench::write_results(impossible.string(), stats, metadata));
