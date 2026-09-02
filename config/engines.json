@@ -1,0 +1,117 @@
+{
+  "manifest_version": 1,
+  "defaults": {
+    "engines": ["thorvg"],
+    "scenes": ["default", "rotation"],
+    "measured_frames": 1000,
+    "warmup_frames": 120,
+    "object_count": 5000,
+    "width": 2560,
+    "height": 1440
+  },
+  "assets": {
+    "png": "sha256:ed72a1ac58805af5690c3d9437778bed397c5bc5594e7c30706725a6713af844",
+    "jpg": "sha256:f20da9f2f243f1ec1dd88d3486c40d89c2b60a1ab886ceaa114c9b2cf40fe1ed"
+  },
+  "api_order": ["CPU", "OpenGL", "WebGPU"],
+  "workloads": {
+    "rect": {"display_name": "Rectangle"},
+    "circle": {"display_name": "Circle"},
+    "stroke": {"display_name": "Stroke"},
+    "image": {"display_name": "Image"},
+    "lineargradient": {"display_name": "Linear gradient"},
+    "radialgradient": {"display_name": "Radial gradient"},
+    "strokerect": {"display_name": "Filled rectangle + stroke"}
+  },
+  "engines": {
+    "skia": {
+      "display_name": "Skia",
+      "scene_model": "immediate",
+      "command": {
+        "executable": "{workload}bench_skia_sdl"
+      },
+      "backends": {
+        "cpu": {
+          "display_name": "CPU",
+          "api": "CPU",
+          "gpu": false
+        },
+        "gl": {
+          "display_name": "OpenGL",
+          "api": "OpenGL",
+          "gpu": true
+        }
+      }
+    },
+    "thorvg": {
+      "display_name": "ThorVG",
+      "scene_model": "retained",
+      "command": {
+        "executable": "{workload}bench_thorvg_sdl"
+      },
+      "backends": {
+        "cpu": {
+          "display_name": "CPU",
+          "api": "CPU",
+          "gpu": false
+        },
+        "gl": {
+          "display_name": "OpenGL",
+          "api": "OpenGL",
+          "gpu": true
+        },
+        "webgpu": {
+          "display_name": "WebGPU",
+          "api": "WebGPU",
+          "gpu": true
+        }
+      }
+    },
+    "nanovg": {
+      "display_name": "NanoVG",
+      "scene_model": "immediate",
+      "command": {
+        "executable": "{workload}bench_nanovg_sdl"
+      },
+      "backends": {
+        "gl": {
+          "display_name": "OpenGL",
+          "api": "OpenGL",
+          "gpu": true
+        }
+      }
+    },
+    "pathfinder": {
+      "display_name": "Pathfinder",
+      "engine_version": "0.5.0",
+      "scene_model": "immediate",
+      "command": {
+        "executable": "pathfinder-bench",
+        "args": ["--benchmark={workload}"]
+      },
+      "backends": {
+        "gl": {
+          "display_name": "OpenGL GL3/D3D9",
+          "api": "OpenGL",
+          "gpu": true
+        }
+      }
+    },
+    "vello": {
+      "display_name": "Vello",
+      "engine_version": "0.10.0",
+      "scene_model": "immediate",
+      "command": {
+        "executable": "vello-bench",
+        "args": ["--benchmark={workload}"]
+      },
+      "backends": {
+        "webgpu": {
+          "display_name": "WebGPU/wgpu",
+          "api": "WebGPU",
+          "gpu": true
+        }
+      }
+    }
+  }
+}

@@ -11,12 +11,21 @@ option(VGBENCH_ENABLE_THORVG "Build the ThorVG adapters" ON)
 option(VGBENCH_ENABLE_NANOVG "Build the NanoVG/OpenGL adapters" OFF)
 option(VGBENCH_ENABLE_PATHFINDER "Build the Pathfinder/GL3 adapter" OFF)
 option(VGBENCH_ENABLE_VELLO "Build the Vello/WebGPU adapter" OFF)
+option(VGBENCH_ENABLE_ALL_GPU "Enable every GPU engine" OFF)
 option(VGBENCH_BUILD_THORVG_FROM_SOURCE
   "Build ThorVG from source instead of using pkg-config" OFF)
 
 # Compatibility with the repository's previous ThorVG source-build flag.
 if(DEFINED RECTBENCH_BUILD_THORVG)
   set(VGBENCH_BUILD_THORVG_FROM_SOURCE "${RECTBENCH_BUILD_THORVG}")
+endif()
+
+if(VGBENCH_ENABLE_ALL_GPU)
+  set(VGBENCH_ENABLE_SKIA ON)
+  set(VGBENCH_ENABLE_THORVG ON)
+  set(VGBENCH_ENABLE_NANOVG ON)
+  set(VGBENCH_ENABLE_PATHFINDER ON)
+  set(VGBENCH_ENABLE_VELLO ON)
 endif()
 
 set(VGBENCH_CPP_ENGINES OFF)

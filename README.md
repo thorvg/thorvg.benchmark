@@ -9,232 +9,151 @@
   <img width="550" height="auto" src="https://github.com/thorvg/thorvg.site/blob/main/readme/logo/animated_brand.svg">
 </p>
 
-A benchmark comparing **Skia** and **ThorVG** rendering performance.
+This repository compares the same primitive microbenchmarks across Skia,
+ThorVG, NanoVG, Pathfinder, and Vello. It measures the repository's seven
+existing workloads rather than the engines' complete feature sets.
 
-## Quick Start (macOS)
+| Engine | Backend | Scene model | Dependency |
+|---|---|---|---|
+| Skia | CPU, OpenGL | immediate | configured vcpkg package |
+| ThorVG | CPU, OpenGL, WebGPU | retained | installed package or latest `main` source build |
+| NanoVG | OpenGL 3.3 core | immediate | configured vcpkg package |
+| Pathfinder | OpenGL GL3/D3D9 | immediate | crates.io `0.5` packages |
+| Vello | WebGPU/wgpu | immediate | crates.io `0.10.0` package |
 
-### 1. Clone & Initialize
+The default suite contains `rect`, `circle`, `stroke`, `image`,
+`lineargradient`, `radialgradient`, and `strokerect`, each in `default` and
+`rotation` scene modes. SVG, arbitrary-path, text, clipping, and animation
+workloads are intentionally out of scope.
+
+## Timing and comparability
+
+Every publishable GPU sample measures:
+
+```text
+update -> encode/render/submit -> present -> explicit GPU completion
+```
+
+OpenGL completion uses `glFinish()` after the swap. WebGPU completion waits for
+the submitted queue work after presentation. `--gpu_sync=1` is the default;
+`--gpu_sync=0` is diagnostic-only and is never ranked.
+
+OpenGL adapters request a 3.3 core context, RGBA8, depth24, stencil8, double
+buffering, and no MSAA. They query the actual swap interval. WebGPU adapters
+prefer Immediate; Mailbox and FIFO results are marked `vsync-limited`. Only
+schema-v2 runs with an exact drawable size, verified non-limiting presentation,
+complete raw samples, explicit GPU completion, and a Release build are
+comparable. ThorVG uses a fixed four-thread configuration.
+Image results record a runtime SHA-256 of the exact asset path selected by the
+adapter; the suite rejects it if it differs from the manifest's canonical hash.
+Within each workload, scene, and API, the suite ranks GPU results only when
+every repeat and engine reports the same GPU device and pixel format. A change
+in either keeps the measurements for diagnostics but excludes the group from
+performance conclusions.
+
+Adapters use a black background, source-over blending, antialiasing, butt
+caps with miter joins/miter limit 4, bilinear image sampling, clamped/padded
+gradients, and the same center-based scale/rotate/translate order. The ThorVG
+image adapter relies on ThorVG's fixed linear sampler because its public
+`Picture` API has no per-picture filtering switch.
+
+## Build
+
+Requirements are CMake 3.20+, Ninja, SDL2, and the SDK for the selected engine.
+Rust engines require Rust 1.88 or newer. Skia and NanoVG use vcpkg packages;
+Pathfinder and Vello use crates.io packages resolved by their adapter lockfiles.
+ThorVG and its WebGPU adapter require wgpu-native. By default ThorVG is loaded
+from the installed `thorvg-1` pkg-config package. Set
+`VGBENCH_BUILD_THORVG_FROM_SOURCE=ON` to fetch and build the latest ThorVG
+`main` branch instead. A normal CMake configure builds only the ThorVG
+adapters; every competitor is opt-in.
+
+Each engine can be built without discovering unrelated dependencies:
 
 ```bash
-git clone <this-repo>
-cd thorvg.benchmark
+# NanoVG only
+cmake --preset nanovg-only
+cmake --build --preset nanovg-only
+
+# Pathfinder only (Cargo always uses --locked)
+cmake --preset pathfinder-only
+cmake --build --preset pathfinder-only
+
+# Vello only
+cmake --preset vello-only
+cmake --build --preset vello-only
 ```
 
-### 2. Install Dependencies
+The `all-gpu` preset enables all five engine switches. When Skia or NanoVG is
+enabled, provide the vcpkg toolchain through your environment or configure
+command. Equivalent switches are:
+
+```text
+VGBENCH_ENABLE_SKIA
+VGBENCH_ENABLE_THORVG
+VGBENCH_ENABLE_NANOVG
+VGBENCH_ENABLE_PATHFINDER
+VGBENCH_ENABLE_VELLO
+VGBENCH_ENABLE_ALL_GPU
+```
+
+## Run one benchmark
+
+C++ adapters use one executable per workload. Rust adapters combine all
+workloads behind `--benchmark`:
 
 ```bash
-# System dependencies
-brew install cmake ninja meson wgpu-native libomp python3
+./build/nanovg-only/rectbench_nanovg_sdl \
+  --backend=gl --scene=rotation --frames=100 --warmup=10
 
-# vcpkg (one-time setup)
-git clone https://github.com/microsoft/vcpkg.git
-./vcpkg/bootstrap-vcpkg.sh
-./vcpkg/vcpkg install skia sdl2 --triplet arm64-osx
+./build/pathfinder-only/pathfinder-bench \
+  --benchmark=rect --backend=gl --scene=rotation
 
-# thorvg (optionally checkout to a specific tag for testing)
-git clone https://github.com/thorvg/thorvg.git
-meson setup thorvg/build thorvg -Dloaders=all -Dengines=all
-ninja -C thorvg/build install
+./build/vello-only/vello-bench \
+  --benchmark=rect --backend=webgpu --scene=rotation
 ```
 
-### 3. Build
+Shared arguments include:
+
+| Option | Default | Meaning |
+|---|---:|---|
+| `--benchmark=ID` | inferred / `rect` | workload for combined Rust binaries |
+| `--backend=cpu\|gl\|webgpu` | engine default | backend |
+| `--scene=default\|rotation` | `default` | scene mode |
+| `--seed=INT` | `12345` | deterministic PCG32 seed |
+| `--frames=INT` | `1000` | measured frames |
+| `--warmup=INT` | `120` | warmup frames |
+| `--width=INT`, `--height=INT` | `2560`, `1440` | exact drawable resolution |
+| `--vsync=0\|1` | `0` | requested synchronization |
+| `--gpu_sync=0\|1` | `1` | explicit completion wait |
+| `--capture=PATH` | none | lossless correctness capture |
+| `--output=PATH` | generated | schema-v2 JSON path |
+
+## Manifest-driven suite
+
+Capabilities and executable commands live in `config/engines.json`. The runner
+defaults to ThorVG and uses matched seeds and cyclic counterbalancing within
+each workload/backend/scene group. Select competitors explicitly with
+`--engines`:
 
 ```bash
-PKG_CONFIG_PATH="/opt/homebrew/lib/pkgconfig:$PKG_CONFIG_PATH" \
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_TOOLCHAIN_FILE="$HOME/vcpkg/scripts/buildsystems/vcpkg.cmake"
+python3 tools/run_all.py \
+  --bin-dir=build/all-gpu --engines=all --backends=all \
+  --runs=3 -- --frames=200 --warmup=20
 
-cmake --build build -j
+python3 tools/generate_report.py results_suite_20260902_210000/summary.json \
+  --output report.md
 ```
 
-### 4. Run
+Missing output, early closure, partial runs, unsupported variants, and metadata
+mismatches make the suite incomplete instead of silently aggregating data.
+When passed through the suite, `--capture=PATH` is a base name; the runner adds
+the variant, seed, and run number so captures cannot overwrite one another.
+Reports build CPU, OpenGL, and WebGPU sections dynamically. Historical
+schema-v1 files remain readable but are labelled legacy and excluded from
+synchronized rankings; cross-API speed ratios are not generated by default.
 
-```bash
-./build/rectbench_skia_sdl
-./build/rectbench_thorvg_sdl
-```
+## Validate results
 
-## Benchmark CLI Options
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--backend=cpu\|gl\|webgpu` | `cpu` | Rendering backend |
-| `--scene=default\|rotation` | `default` | Scene mode (rotation adds per-frame rotation) |
-| `--seed=INT` | `12345` | RNG seed for deterministic output |
-| `--frames=INT` | `1000` | Number of measured frames |
-| `--warmup=INT` | `120` | Number of warmup frames |
-| `--width=INT` | `2560` | Window/render width |
-| `--height=INT` | `1440` | Window/render height |
-| `--vsync=0\|1` | `0` | Enable VSync |
-| `--output=PATH` | auto | Output JSON file path |
-
-### Examples
-
-```bash
-# Quick test with fewer frames
-./build/rectbench_skia_sdl --frames=100 --warmup=10
-
-# Test with specific backend
-./build/rectbench_thorvg_sdl --backend=gl
-
-# Rotation scene mode
-./build/rectbench_thorvg_sdl --scene=rotation
-
-# Verify deterministic output (checksums should match)
-./build/rectbench_skia_sdl --backend=cpu --seed=42 --frames=1
-./build/rectbench_thorvg_sdl --backend=cpu --seed=42 --frames=1
-```
-
-## Tools
-
-### `run_all.py` – Run Benchmark Suite
-
-Run a matrix of benchmarks across multiple engines, backends, and scenes:
-
-```bash
-# Basic usage
-python3 tools/run_all.py --runs 3 -- --frames=200 --warmup=20
-
-# Build before running
-python3 tools/run_all.py --build --runs 3 -- --frames=200 --warmup=20
-
-# Specific benchmarks only
-python3 tools/run_all.py --benchmarks=rect,circle --runs 3
-
-# CPU backend only
-python3 tools/run_all.py --backends=cpu --runs 5
-
-# Fixed seed for reproducibility
-python3 tools/run_all.py --seed=42 --runs 3
-```
-
-**Options:**
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--runs N` | `3` | Number of runs per variant |
-| `--benchmarks=...` | all | Comma-separated: `rect,circle,stroke,image,lineargradient,radialgradient` |
-| `--engines=...` | `skia,thorvg` | Engines to test |
-| `--backends=...` | `cpu,gl` | Backends: `cpu`, `gl`, `webgpu` (ThorVG only) |
-| `--scenes=...` | `default,rotation` | Scene modes |
-| `--build` | off | Build with CMake before running |
-| `--seed N` | - | Fixed seed for ALL runs (use for measuring variance with identical input) |
-| `--seed-base N` | `12345` | Base for per-run seeds. Each run uses a different seed derived from this base. Same seed across all engines/backends within each run for fair comparison. |
-| `--output-dir PATH` | auto | Results directory (default: `results_suite_<timestamp>`) |
-| `--dry-run` | off | Print commands without executing |
-
-**Seed behavior:** By default, run 1 uses seed derived from `12345+0`, run 2 from `12345+1`, etc. This ensures:
-- Different random input each run
-- Same input for all engines/backends within a run (fair comparison)
-
-**Output:** Results are saved to `results_suite_<timestamp>/` with:
-- Per-run JSON files organized by benchmark/engine/backend/scene
-- `summary.json` with aggregated statistics
-
----
-
-### `repeat_seed.py` – Repeat with Fixed Seed
-
-Run the same benchmark multiple times with identical or varied seeds:
-
-```bash
-# Fixed seed (all runs identical)
-python3 tools/repeat_seed.py --runs 5 --seed 42 -- \
-  ./build/rectbench_skia_sdl --backend=cpu --frames=200 --warmup=20
-
-# Random seeds per run (measure variance)
-python3 tools/repeat_seed.py --runs 5 -- \
-  ./build/rectbench_thorvg_sdl --backend=gl --frames=200
-```
-
-**Options:**
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--runs N` | `5` | Number of runs |
-| `--seed N` | random | Fixed seed (omit for different seed per run) |
-| `--output-dir PATH` | `results_repeat` | Output directory |
-| `--timeout-seconds N` | none | Kill run if exceeded |
-| `--dry-run` | off | Print commands without executing |
-
----
-
-### `generate_report.py` – Generate Markdown Report
-
-Create a comparison table from benchmark results:
-
-```bash
-python3 tools/generate_report.py results_suite_*/summary.json
-```
-
-**Output:** Prints a Markdown table comparing FPS across engines and backends.
-
-## Output Format
-
-Benchmark results are written as JSON:
-
-```json
-{
-  "stats": {
-    "avg_ms": 1.23,
-    "median_ms": 1.20,
-    "p95_ms": 1.50,
-    "p99_ms": 1.80,
-    "min_ms": 1.00,
-    "max_ms": 2.00,
-    "stddev_ms": 0.15,
-    "fps": 810.37
-  },
-  "metadata": {
-    "engine": "skia",
-    "backend": "cpu",
-    "seed": 12345,
-    "resolution": "2560x1440"
-  }
-}
-```
-
-## Linux
-
-Linux builds are validated via GitHub Actions. See [`.github/workflows/linux.yml`](.github/workflows/linux.yml) for the CI configuration.
-
-### Dependencies (Ubuntu 22.04)
-
-```bash
-sudo apt-get install -y \
-  cmake ninja-build pkg-config python3 meson curl unzip \
-  autoconf autoconf-archive automake libtool libtool-bin \
-  libsdl2-dev libgl1-mesa-dev libegl1-mesa-dev \
-  libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev libxfixes-dev
-
-# vcpkg + Skia
-git clone https://github.com/microsoft/vcpkg.git
-./vcpkg/bootstrap-vcpkg.sh
-./vcpkg/vcpkg install skia --triplet x64-linux
-
-# thorvg (optionally checkout to a specific tag for testing)
-git clone https://github.com/thorvg/thorvg.git
-meson setup thorvg/build thorvg -Dloaders=all -Dengines=all
-ninja -C thorvg/build install
-```
-
-### Build
-
-```bash
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_TOOLCHAIN_FILE="$HOME/vcpkg/scripts/buildsystems/vcpkg.cmake"
-cmake --build build -j
-```
-
-## Clean Rebuild
-
-```bash
-rm -rf build
-# Repeat the build step
-```
-
-## Notes
-
-- **Skia**: Installed via vcpkg
-- **ThorVG**: Built from the `thorvg` [repo](https://github.com/thorvg/thorvg)
-- **wgpu-native**: See the [guide](https://github.com/thorvg/thorvg/wiki/WebGPU-Engine-Development)
+Adapters can write lossless captures with `--capture`; inspect those before
+comparing performance. Software GPU implementations are not comparable.
