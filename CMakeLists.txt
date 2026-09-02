@@ -8,6 +8,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # and each switch can be configured without discovering unrelated SDKs.
 option(VGBENCH_ENABLE_SKIA "Build the Skia adapters" OFF)
 option(VGBENCH_ENABLE_THORVG "Build the ThorVG adapters" ON)
+option(VGBENCH_ENABLE_NANOVG "Build the NanoVG/OpenGL adapters" OFF)
 option(VGBENCH_BUILD_THORVG_FROM_SOURCE
   "Build ThorVG from source instead of using pkg-config" OFF)
 
@@ -17,7 +18,7 @@ if(DEFINED RECTBENCH_BUILD_THORVG)
 endif()
 
 set(VGBENCH_CPP_ENGINES OFF)
-if(VGBENCH_ENABLE_SKIA OR VGBENCH_ENABLE_THORVG)
+if(VGBENCH_ENABLE_SKIA OR VGBENCH_ENABLE_THORVG OR VGBENCH_ENABLE_NANOVG)
   set(VGBENCH_CPP_ENGINES ON)
 endif()
 
@@ -177,6 +178,34 @@ if(VGBENCH_ENABLE_THORVG)
   endforeach()
 endif()
 
+if(VGBENCH_ENABLE_NANOVG)
+  find_package(nanovg CONFIG REQUIRED)
+  set(VGBENCH_NANOVG_VERSION "unknown"
+    CACHE STRING "NanoVG version metadata")
+  set(VGBENCH_NANOVG_REVISION "unknown"
+    CACHE STRING "NanoVG revision metadata")
+  add_library(vgbench_nanovg STATIC src/nanovg/nanovg_bench.cpp)
+  target_compile_definitions(vgbench_nanovg PRIVATE
+    VGBENCH_NANOVG_VERSION="${VGBENCH_NANOVG_VERSION}"
+    VGBENCH_NANOVG_REVISION="${VGBENCH_NANOVG_REVISION}"
+  )
+  target_include_directories(vgbench_nanovg PUBLIC
+    "${CMAKE_SOURCE_DIR}/src/nanovg"
+  )
+  target_link_libraries(vgbench_nanovg PUBLIC
+    vgbench_common nanovg::nanovg ${VGBENCH_SDL_TARGET} OpenGL::GL
+  )
+  if(UNIX AND NOT APPLE)
+    target_link_libraries(vgbench_nanovg PUBLIC m)
+  endif()
+  foreach(WORKLOAD IN LISTS VGBENCH_WORKLOADS)
+    set(TARGET_NAME "${WORKLOAD}bench_nanovg_sdl")
+    add_executable(${TARGET_NAME} "src/nanovg/${TARGET_NAME}.cpp")
+    target_link_libraries(${TARGET_NAME} PRIVATE vgbench_nanovg)
+  endforeach()
+endif()
+
 message(STATUS "=== vgbench configuration ===")
 message(STATUS "Skia:       ${VGBENCH_ENABLE_SKIA}")
 message(STATUS "ThorVG:     ${VGBENCH_ENABLE_THORVG}")
+message(STATUS "NanoVG:     ${VGBENCH_ENABLE_NANOVG}")
