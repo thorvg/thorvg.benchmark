@@ -7,7 +7,7 @@
 #include "sha256.hpp"
 #include "sdl_utils.hpp"
 
-#include <SDL2/SDL.h>
+#include <SDL3/SDL.h>
 
 #define GL_SILENCE_DEPRECATION
 #ifdef __APPLE__
@@ -16,7 +16,7 @@
 #ifndef GL_GLEXT_PROTOTYPES
 #define GL_GLEXT_PROTOTYPES 1
 #endif
-#include <SDL2/SDL_opengl.h>
+#include <SDL3/SDL_opengl.h>
 #endif
 
 #include "nanovg.h"
@@ -65,8 +65,8 @@ std::string find_image_path(const std::string &extension) {
   return {};
 }
 
-bool set_gl_attribute(SDL_GLattr attribute, int value, const char *name) {
-  if (SDL_GL_SetAttribute(attribute, value) == 0) {
+bool set_gl_attribute(SDL_GLAttr attribute, int value, const char *name) {
+  if (SDL_GL_SetAttribute(attribute, value)) {
     return true;
   }
   std::cerr << "SDL_GL_SetAttribute(" << name << ") failed: " << SDL_GetError()
@@ -91,7 +91,7 @@ public:
   NanoVgWindow(bench::CliOptions opts, Workload workload)
       : opts_(std::move(opts)), workload_(workload), width_(opts_.width),
         height_(opts_.height) {
-    if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+    if (!SDL_Init(SDL_INIT_VIDEO)) {
       std::cerr << "SDL_Init failed: " << SDL_GetError() << "\n";
       return;
     }
@@ -127,10 +127,9 @@ public:
 
     const std::string title =
         std::string(workload_title(workload_)) + " NanoVG (OpenGL 3)";
-    window_ = SDL_CreateWindow(
-        title.c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-        static_cast<int>(opts_.width), static_cast<int>(opts_.height),
-        SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_ALLOW_HIGHDPI);
+    window_ = bench::create_centered_window(
+        title.c_str(), static_cast<int>(opts_.width), static_cast<int>(opts_.height),
+        SDL_WINDOW_OPENGL | SDL_WINDOW_HIGH_PIXEL_DENSITY);
     if (!window_) {
       std::cerr << "SDL_CreateWindow failed: " << SDL_GetError() << "\n";
       return;
@@ -141,18 +140,21 @@ public:
       std::cerr << "SDL_GL_CreateContext failed: " << SDL_GetError() << "\n";
       return;
     }
-    if (SDL_GL_MakeCurrent(window_, context_) < 0) {
+    if (!SDL_GL_MakeCurrent(window_, context_)) {
       std::cerr << "SDL_GL_MakeCurrent failed: " << SDL_GetError() << "\n";
       return;
     }
 
     const int requested_swap_interval = opts_.vsync ? 1 : 0;
-    if (SDL_GL_SetSwapInterval(requested_swap_interval) < 0) {
+    if (!SDL_GL_SetSwapInterval(requested_swap_interval)) {
       std::cerr << "Unable to set swap interval to " << requested_swap_interval
                 << ": " << SDL_GetError() << "\n";
       return;
     }
-    actual_swap_interval_ = SDL_GL_GetSwapInterval();
+    if (!SDL_GL_GetSwapInterval(&actual_swap_interval_)) {
+      std::cerr << "Unable to query swap interval: " << SDL_GetError() << "\n";
+      return;
+    }
     if (actual_swap_interval_ != requested_swap_interval) {
       std::cerr << "Requested swap interval " << requested_swap_interval
                 << ", but SDL reports " << actual_swap_interval_ << "\n";
@@ -201,7 +203,7 @@ public:
       nvgDeleteGL3(vg_);
     }
     if (context_) {
-      SDL_GL_DeleteContext(context_);
+      SDL_GL_DestroyContext(context_);
     }
     if (window_) {
       SDL_DestroyWindow(window_);
@@ -209,6 +211,10 @@ public:
     if (sdl_initialized_) {
       SDL_Quit();
     }
+  }
+
+  bool pump_events(bool &running) override {
+    return bench::pump_sdl_events(running);
   }
 
   bool ready() override {
@@ -342,20 +348,13 @@ public:
     }
   }
 
-  bool finish_gpu() override {
-    if (opts_.gpu_sync) {
-      glFinish();
-    }
-    return true;
-  }
-
   bool capture(const std::string &path) override {
     if (!ends_with(path, ".ppm")) {
       std::cerr << "NanoVG capture requires a .ppm output path: " << path
                 << "\n";
       return false;
     }
-    if (!context_ || SDL_GL_MakeCurrent(window_, context_) < 0) {
+    if (!context_ || !SDL_GL_MakeCurrent(window_, context_)) {
       std::cerr << "Unable to make the NanoVG context current for capture\n";
       return false;
     }
@@ -402,7 +401,7 @@ public:
   const char *gpu_vendor() const override { return gpu_vendor_.c_str(); }
   const char *gpu_driver() const override { return gpu_driver_.c_str(); }
   const char *gpu_completion() const override {
-    return opts_.gpu_sync ? "glFinish" : "none";
+    return "none";
   }
   const char *present_mode() const override {
     return actual_swap_interval_ == 0 ? "immediate" : "fifo";
@@ -606,8 +605,6 @@ int run(int argc, char *argv[], Workload workload) {
   std::cout << "Scene:   " << bench::scene_mode_name(opts.scene_mode) << "\n";
   std::cout << "Seed:    " << opts.seed << "\n";
   std::cout << "VSync:   " << (opts.vsync ? "ON" : "OFF") << "\n";
-  std::cout << "GPU sync:" << (opts.gpu_sync ? " glFinish" : " disabled")
-            << "\n";
 
   NanoVgWindow window(opts, workload);
   return bench::run_benchmark(opts, window);

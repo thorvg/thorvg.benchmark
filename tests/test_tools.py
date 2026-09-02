@@ -11,6 +11,7 @@ import json
 import math
 import os
 from pathlib import Path
+import statistics
 import subprocess
 import sys
 import tempfile
@@ -58,11 +59,47 @@ def variant(bench, scene, engine, backend, fps, avg_ms=1.0):
     }
 
 
+def result_for_command(command, frame_ms=1.0):
+    arguments = dict(argument[2:].split("=", 1) for argument in command[1:])
+    engine = "skia" if "skia" in Path(command[0]).name else "thorvg"
+    frames = int(arguments["frames"])
+    resolution = f"{arguments['width']}x{arguments['height']}"
+    return {
+        "schema_version": 2,
+        "status": "passed",
+        "comparable": True,
+        "frame_times_ms": [frame_ms] * frames,
+        "stats": {
+            **dict.fromkeys(("avg_ms", "median_ms", "p95_ms", "p99_ms", "min_ms", "max_ms"), frame_ms),
+            "stddev_ms": 0.0,
+            "fps": 1000.0 / frame_ms,
+        },
+        "metadata": {
+            "benchmark": "rect", "engine": engine,
+            "engine_version": "test", "engine_revision": "test",
+            "scene_model": "immediate" if engine == "skia" else "retained",
+            "backend": arguments["backend"], "graphics_api": "CPU",
+            "gpu_device": "none", "gpu_vendor": "none", "gpu_driver": "none",
+            "gpu_completion": "none", "timing_mode": "onscreen_cpu_complete",
+            "seed": int(arguments["seed"]), "object_count": 5000,
+            "resolution": resolution, "requested_resolution": resolution,
+            "pixel_format": "RGBA8888", "vsync_requested": False,
+            "vsync_actual": False, "present_mode": "immediate",
+            "scene_mode": arguments["scene"], "warmup_frames": int(arguments["warmup"]),
+            "measured_frames": frames, "build_type": "Release", "asset_hash": "",
+        },
+    }
+
+
 class StatisticsTests(unittest.TestCase):
     def test_numeric_summaries_use_sample_standard_deviation(self):
         for module in (run_all, reconstruct_summary):
             with self.subTest(tool=module.__name__):
-                self.assertEqual(module._summarize([]), {})
+                if module is run_all:
+                    with self.assertRaises(statistics.StatisticsError):
+                        module._summarize([])
+                else:
+                    self.assertEqual(module._summarize([]), {})
                 self.assertEqual(module._summarize([7.25]), {"mean": 7.25, "stdev": 0.0})
                 result = module._summarize([1.0, 2.0, 6.0])
                 self.assertEqual(result["mean"], 3.0)
@@ -96,37 +133,40 @@ class RunAllTests(unittest.TestCase):
                      "--scenes", "default", "--runs", "1", "--seed", "42"]
 
     def test_supported_matrix_and_legacy_binary_names(self):
-        variants = run_all._variants(self.bin_dir, ["RectBench"], ["SKIA", "THORVG"],
-                                     ["CPU", "GL", "WEBGPU"], ["DEFAULT", "ROTATION"])
+        manifest = run_all.load_manifest()
+        variants = run_all.make_variants(
+            manifest, self.bin_dir, ["rect"], ["skia", "thorvg"],
+            ["cpu", "gl", "webgpu"], ["default", "rotation"], backends_all=True)
         self.assertEqual(len(variants), 10)
         self.assertEqual({(v.engine, v.backend) for v in variants},
                          {("skia", "cpu"), ("skia", "gl"), ("thorvg", "cpu"),
                           ("thorvg", "gl"), ("thorvg", "webgpu")})
         self.assertEqual({v.scene for v in variants}, {"default", "rotation"})
         for v in variants:
-            self.assertEqual(v.benchmark, "rectbench")
+            self.assertEqual(v.benchmark, "rect")
             self.assertTrue(Path(v.binary).is_absolute())
             self.assertEqual(Path(v.binary).name, "rect_tvg_sdl" if v.engine == "thorvg" else "rect_skia_sdl")
-            self.assertEqual(v.name, f"rectbench_{v.engine}_{v.backend}_{v.scene}")
-        for engine, backend, scene in (("other", "cpu", "default"), ("thorvg", "other", "default"),
-                                       ("thorvg", "cpu", "other")):
-            with self.subTest(engine=engine, backend=backend, scene=scene), self.assertRaises(ValueError):
-                run_all._variants(self.bin_dir, ["rect"], [engine], [backend], [scene])
+            self.assertEqual(v.name, f"rect_{v.engine}_{v.backend}_{v.scene}")
+        explicit = run_all.make_variants(
+            manifest, self.bin_dir, ["rect"], ["skia", "thorvg"],
+            ["cpu", "gl", "webgpu"], ["default", "rotation"], backends_all=False)
+        self.assertEqual(len(explicit), 12)
+        self.assertEqual([(v.engine, v.backend, v.scene) for v in explicit if not v.supported],
+                         [("skia", "webgpu", "default"), ("skia", "webgpu", "rotation")])
+        code, stdout, _ = invoke(run_all, self.args + ["--dry-run", "--benchmarks", "RectBench",
+            "--engines", "SKIA,THORVG", "--backends", "ALL", "--scenes", "DEFAULT,ROTATION"])
+        self.assertEqual(code, 0)
+        self.assertEqual(stdout.count("[1/1]"), 10)
 
     def test_runs_share_inputs_and_write_summary_compatible_with_reports(self):
-        payloads = iter([
-            {"avg_ms": 1, "fps": 100, "median_ms": "ignored"},
-            {"avg_ms": 3, "fps": 300, "p95_ms": 9},
-            {"avg_ms": 2, "fps": 200},
-            {"avg_ms": 6, "fps": 600},
-        ])
+        frame_times = iter([1.0, 2.0, 6.0, 3.0])
         commands = []
 
         def run(cmd, **kwargs):
             commands.append(cmd)
             path = Path(next(a.removeprefix("--output=") for a in cmd if a.startswith("--output=")))
             self.assertTrue(path.is_absolute())
-            path.write_text(json.dumps({"stats": next(payloads)}), encoding="utf-8")
+            path.write_text(json.dumps(result_for_command(cmd, next(frame_times))), encoding="utf-8")
             self.assertEqual(kwargs["timeout"], 1.5)
             return subprocess.CompletedProcess(cmd, 0, "benchmark log\n")
 
@@ -135,38 +175,47 @@ class RunAllTests(unittest.TestCase):
         with mock.patch.object(run_all.subprocess, "run", side_effect=run):
             code, _, stderr = invoke(run_all, args)
         self.assertEqual(code, 0)
-        self.assertIn("ignoring extra args", stderr)
+        self.assertIn("ignoring arguments controlled by the suite", stderr)
         summary_path = self.output / "summary.json"
         summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        self.assertEqual(summary["suite_schema_version"], 2)
+        self.assertEqual(summary["status"], "complete")
         self.assertEqual(summary["runs_per_variant"], 2)
         self.assertIsNone(summary["fixed_seed"])
         self.assertEqual(summary["seed_base"], 0)
         self.assertEqual(len(set(summary["seeds"])), 2)
-        self.assertEqual([c[3] for c in commands[:2]], [c[3] for c in commands[2:]])
+        self.assertEqual([Path(c[0]).name for c in commands],
+                         ["rect_skia_sdl", "rect_tvg_sdl", "rect_tvg_sdl", "rect_skia_sdl"])
+        self.assertEqual([c[3] for c in commands],
+                         [f"--seed={seed}" for seed in summary["seeds"] for _ in range(2)])
         for cmd in commands:
             self.assertIn("--frames=10", cmd)
             self.assertEqual(sum(a.startswith("--seed=") for a in cmd), 1)
             self.assertEqual(sum(a.startswith("--output=") for a in cmd), 1)
         first, second = summary["variants"]
         self.assertEqual((first["engine"], second["engine"]), ("skia", "thorvg"))
-        self.assertEqual(first["summary"]["fps"]["mean"], 200.0)
+        self.assertAlmostEqual(first["summary"]["fps"]["mean"], (1000.0 + 1000.0 / 3) / 2)
         self.assertAlmostEqual(first["summary"]["avg_ms"]["stdev"], math.sqrt(2))
-        self.assertEqual(second["summary"]["fps"]["mean"], 400.0)
-        self.assertNotIn("median_ms", first["summary"])
-        self.assertEqual(first["summary"]["p95_ms"], {"mean": 9.0, "stdev": 0.0})
+        self.assertAlmostEqual(second["summary"]["fps"]["mean"], (500.0 + 1000.0 / 6) / 2)
+        self.assertEqual(first["summary"]["median_ms"], {"mean": 2.0, "stdev": math.sqrt(2)})
+        self.assertEqual(first["summary"]["p95_ms"], {"mean": 2.0, "stdev": math.sqrt(2)})
         for item in summary["variants"]:
+            self.assertEqual(item["status"], "passed")
+            self.assertTrue(item["comparable"])
             self.assertEqual(len(item["outputs"]), 2)
+            self.assertEqual([run["frame_count"] for run in item["runs"]], [10, 10])
             for path in item["outputs"]:
                 self.assertEqual(Path(path).with_suffix(".log").read_text(encoding="utf-8"), "benchmark log\n")
         self.assertEqual(invoke(generate_report, [str(summary_path)])[0], 0)
 
-    def test_failed_runs_do_not_publish_summary(self):
-        for kind, expected, message in (("exit", 7, "failed"), ("missing", 2, "missing output"),
-                                         ("empty", 2, "empty output"), ("invalid", 2, "invalid JSON"),
-                                         ("timeout", 124, "timed out")):
+    def test_failed_runs_publish_incomplete_summary_without_ranking(self):
+        for kind, message in (("exit", "exited with 7"), ("missing", "non-empty result"),
+                              ("empty", "non-empty result"), ("invalid", "invalid result"),
+                              ("numeric", "stats.median_ms must be numeric"),
+                              ("metadata", "metadata.seed"), ("timeout", "timed out")):
             with self.subTest(kind=kind):
                 output = self.root / kind
-                args = self.args + ["--output-dir", str(output), "--timeout-seconds", "0.1"]
+                args = self.args + ["--output-dir", str(output), "--timeout-seconds", "0.1", "--runs", "2"]
 
                 def run(cmd, **kwargs):
                     if kind == "timeout":
@@ -174,15 +223,49 @@ class RunAllTests(unittest.TestCase):
                     path = Path(next(a[9:] for a in cmd if a.startswith("--output=")))
                     if kind in ("empty", "invalid"):
                         path.write_text("" if kind == "empty" else "{bad", encoding="utf-8")
+                    if kind in ("numeric", "metadata"):
+                        data = result_for_command(cmd)
+                        if kind == "numeric":
+                            data["stats"]["median_ms"] = "ignored"
+                        else:
+                            data["metadata"]["seed"] += 1
+                        path.write_text(json.dumps(data), encoding="utf-8")
                     return subprocess.CompletedProcess(cmd, 7 if kind == "exit" else 0, "failure log")
 
                 with mock.patch.object(run_all.subprocess, "run", side_effect=run) as process:
-                    code, _, stderr = invoke(run_all, args)
-                self.assertEqual(code, expected)
-                self.assertIn(message, stderr)
+                    code, _, _ = invoke(run_all, args)
+                self.assertEqual(code, 2)
                 self.assertEqual(process.call_count, 1)
-                self.assertFalse((output / "summary.json").exists())
+                summary = json.loads((output / "summary.json").read_text(encoding="utf-8"))
+                self.assertEqual(summary["status"], "incomplete")
+                item, = summary["variants"]
+                self.assertEqual(item["status"], "run-failed")
+                self.assertFalse(item["comparable"])
+                self.assertIn(message, item["reason"])
+                self.assertEqual(item["summary"], {})
+                self.assertEqual(item["outputs"], [])
                 self.assertEqual(len(list(output.rglob("*.log"))), 1)
+
+    def test_legacy_results_remain_historical_and_noncomparable(self):
+        def run(cmd, **kwargs):
+            data = result_for_command(cmd)
+            for key in ("schema_version", "status", "comparable", "frame_times_ms"):
+                del data[key]
+            Path(next(a[9:] for a in cmd if a.startswith("--output="))).write_text(
+                json.dumps(data), encoding="utf-8")
+            return subprocess.CompletedProcess(cmd, 0, "legacy log")
+
+        with mock.patch.object(run_all.subprocess, "run", side_effect=run):
+            self.assertEqual(invoke(run_all, self.args)[0], 0)
+        path = self.output / "summary.json"
+        item, = json.loads(path.read_text(encoding="utf-8"))["variants"]
+        self.assertEqual(item["status"], "legacy-v1")
+        self.assertFalse(item["comparable"])
+        self.assertEqual(item["summary"]["fps"]["mean"], 1000.0)
+        code, report, _ = invoke(generate_report, [str(path)])
+        self.assertEqual(code, 0)
+        self.assertIn("1000.00 ± 0.00†", report)
+        self.assertIn("historical context only and are not ranked", report)
 
     def test_dry_run_expands_all_and_strips_conflicts_without_running(self):
         with mock.patch.object(run_all.subprocess, "run") as process:
@@ -191,7 +274,7 @@ class RunAllTests(unittest.TestCase):
         self.assertEqual(code, 0)
         process.assert_not_called()
         self.assertFalse(self.output.exists())
-        self.assertEqual(stdout.count("[1/1]"), 10)
+        self.assertEqual(stdout.count("[1/1]"), 16)
         self.assertIn("Building: cmake --build", stdout)
         self.assertIn("--frames=5", stdout)
         self.assertNotIn("--output=bad", stdout)
@@ -205,10 +288,14 @@ class RunAllTests(unittest.TestCase):
             self.assertEqual(error.exception.code, 2)
         code, _, stderr = invoke(run_all, self.args + ["--engines", "skia", "--backends", "webgpu"])
         self.assertEqual(code, 2)
-        self.assertIn("No variants", stderr)
+        item, = json.loads((self.output / "summary.json").read_text(encoding="utf-8"))["variants"]
+        self.assertEqual(item["status"], "unsupported")
+        self.assertIn("does not support backend webgpu", item["reason"])
         code, _, stderr = invoke(run_all, self.args + ["--bin-dir", str(self.root / "absent")])
         self.assertEqual(code, 2)
-        self.assertIn("Missing benchmark binaries", stderr)
+        item, = json.loads((self.output / "summary.json").read_text(encoding="utf-8"))["variants"]
+        self.assertEqual(item["status"], "build-missing")
+        self.assertIn("benchmark executable not found", item["reason"])
         with mock.patch.object(run_all.subprocess, "run", return_value=subprocess.CompletedProcess([], 5)) as process:
             self.assertEqual(invoke(run_all, self.args + ["--build", "--build-jobs", "3"])[0], 5)
         self.assertEqual(process.call_args.args[0], ["cmake", "--build", "build", "-j", "3"])
@@ -337,30 +424,39 @@ class ResultToolsTests(unittest.TestCase):
         path = self.write_json(self.root / "summary.json", {"variants": rows})
         code, stdout, stderr = invoke(generate_report, [str(path)])
         self.assertEqual((code, stderr), (0, ""))
-        self.assertEqual(stdout.splitlines(), [
-            "| Benchmark (Scene) | Skia CPU | Skia GL | ThorVG CPU | ThorVG GL | ThorVG WebGPU |",
-            "|---|---|---|---|---|---|",
-            "| rect (default) | 1.00 | 2.00 | 3.00 | 0.00 | - |",
-            "| rect (rotation) | - | - | - | 4.00 | - |",
-            "| stroke (rotation) | - | - | - | - | 99.13 |",
+        self.assertEqual([line for line in stdout.splitlines() if line.startswith("|")], [
+            "| Workload (scene) | Skia — CPU (mean FPS) | ThorVG — CPU (mean FPS) |",
+            "|---|---|---|",
+            "| Rectangle (default) | 1.00† | 3.00† |",
+            "| Workload (scene) | Skia — OpenGL (mean FPS) | ThorVG — OpenGL (mean FPS) |",
+            "|---|---|---|",
+            "| Rectangle (default) | 2.00† | legacy v1† |",
+            "| Rectangle (rotation) | — | 4.00† |",
+            "| Workload (scene) | ThorVG — WebGPU (mean FPS) |",
+            "|---|---|",
+            "| Stroke (rotation) | 99.13† |",
         ])
+        self.assertLess(stdout.index("## CPU"), stdout.index("## OpenGL"))
+        self.assertLess(stdout.index("## OpenGL"), stdout.index("## WebGPU"))
+        self.assertIn("historical context only and are not ranked", stdout)
 
     def test_report_default_path_empty_input_and_error_exits(self):
         old_cwd = Path.cwd()
         self.addCleanup(os.chdir, old_cwd)
         os.chdir(self.root)
-        self.assertEqual(invoke(generate_report, [])[0], 1)
+        with self.assertRaises(SystemExit) as error:
+            invoke(generate_report, [])
+        self.assertEqual(error.exception.code, 2)
         self.assertEqual(invoke(generate_report, [str(self.root / "missing.json")])[0], 1)
         default = self.write_json(self.root / "summary.json", {})
         code, stdout, stderr = invoke(generate_report, [])
-        self.assertEqual((code, stdout), (0, ""))
-        self.assertIn("No variants", stderr)
+        self.assertEqual((code, stdout, stderr), (0, "No variants found in summary.\n", ""))
         default.write_text("[", encoding="utf-8")
         code, _, stderr = invoke(generate_report, [str(default)])
         self.assertEqual(code, 1)
-        self.assertIn("Failed to parse JSON", stderr)
+        self.assertIn("Error: Expecting", stderr)
         self.write_json(default, {"variants": [{}]})
-        self.assertIn("| Unknown (Unknown) | - | - | - | - | - |", invoke(generate_report, [str(default)])[1])
+        self.assertIn("| Unknown (Unknown) | legacy v1† |", invoke(generate_report, [str(default)])[1])
 
     def test_comparison_uses_engine_ratios_and_handles_missing_or_zero_baseline(self):
         rows = [variant("stroke", "rotation", "thorvg", "cpu", 60, 2),

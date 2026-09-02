@@ -1,3 +1,5 @@
+#include <SDL3/SDL_main.h>
+
 #include "nanovg_bench.hpp"
 
 int main(int argc, char *argv[]) {

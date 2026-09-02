@@ -1,0 +1,83 @@
+{
+  "version": 2,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 20,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "all-gpu",
+      "displayName": "All GPU engines",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/all-gpu",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "VGBENCH_ENABLE_ALL_GPU": "ON"
+      }
+    },
+    {
+      "name": "nanovg-only",
+      "displayName": "NanoVG only",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/nanovg-only",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "VGBENCH_ENABLE_ALL_GPU": "OFF",
+        "VGBENCH_ENABLE_SKIA": "OFF",
+        "VGBENCH_ENABLE_THORVG": "OFF",
+        "VGBENCH_ENABLE_NANOVG": "ON",
+        "VGBENCH_ENABLE_PATHFINDER": "OFF",
+        "VGBENCH_ENABLE_VELLO": "OFF"
+      }
+    },
+    {
+      "name": "pathfinder-only",
+      "displayName": "Pathfinder only",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/pathfinder-only",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "VGBENCH_ENABLE_ALL_GPU": "OFF",
+        "VGBENCH_ENABLE_SKIA": "OFF",
+        "VGBENCH_ENABLE_THORVG": "OFF",
+        "VGBENCH_ENABLE_NANOVG": "OFF",
+        "VGBENCH_ENABLE_PATHFINDER": "ON",
+        "VGBENCH_ENABLE_VELLO": "OFF"
+      }
+    },
+    {
+      "name": "vello-only",
+      "displayName": "Vello only",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/vello-only",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "VGBENCH_ENABLE_ALL_GPU": "OFF",
+        "VGBENCH_ENABLE_SKIA": "OFF",
+        "VGBENCH_ENABLE_THORVG": "OFF",
+        "VGBENCH_ENABLE_NANOVG": "OFF",
+        "VGBENCH_ENABLE_PATHFINDER": "OFF",
+        "VGBENCH_ENABLE_VELLO": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "all-gpu",
+      "configurePreset": "all-gpu"
+    },
+    {
+      "name": "nanovg-only",
+      "configurePreset": "nanovg-only"
+    },
+    {
+      "name": "pathfinder-only",
+      "configurePreset": "pathfinder-only"
+    },
+    {
+      "name": "vello-only",
+      "configurePreset": "vello-only"
+    }
+  ]
+}
