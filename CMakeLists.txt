@@ -1,272 +1,182 @@
 cmake_minimum_required(VERSION 3.20)
-project(rectbench LANGUAGES CXX)
-
+project(vgbench LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-include(ExternalProject)
+# Keep the normal build focused on ThorVG. Competitor adapters are opt-in,
+# and each switch can be configured without discovering unrelated SDKs.
+option(VGBENCH_ENABLE_SKIA "Build the Skia adapters" OFF)
+option(VGBENCH_ENABLE_THORVG "Build the ThorVG adapters" ON)
+option(VGBENCH_BUILD_THORVG_FROM_SOURCE
+  "Build ThorVG from source instead of using pkg-config" OFF)
 
-# =============================================================================
-# Options
-# =============================================================================
+# Compatibility with the repository's previous ThorVG source-build flag.
+if(DEFINED RECTBENCH_BUILD_THORVG)
+  set(VGBENCH_BUILD_THORVG_FROM_SOURCE "${RECTBENCH_BUILD_THORVG}")
+endif()
 
-option(
-    RECTBENCH_BUILD_THORVG
-    "Build ThorVG from source instead of using pkg-config"
-    OFF
+set(VGBENCH_CPP_ENGINES OFF)
+if(VGBENCH_ENABLE_SKIA OR VGBENCH_ENABLE_THORVG)
+  set(VGBENCH_CPP_ENGINES ON)
+endif()
+
+set(VGBENCH_WORKLOADS
+  rect circle stroke image lineargradient radialgradient strokerect
 )
 
-# =============================================================================
-# Find Dependencies
-# =============================================================================
+add_library(vgbench_common INTERFACE)
+target_include_directories(vgbench_common INTERFACE
+  "${CMAKE_SOURCE_DIR}/src/common"
+)
+target_compile_definitions(vgbench_common INTERFACE
+  VGBENCH_BUILD_TYPE="$<CONFIG>"
+)
 
-find_package(PkgConfig REQUIRED)
-
-# -----------------------------------------------------------------------------
-# Skia
-# -----------------------------------------------------------------------------
-
-find_package(unofficial-skia CONFIG QUIET)
-
-if(unofficial-skia_FOUND)
-    set(SKIA_LIBS unofficial::skia::skia)
-else()
-    message(FATAL_ERROR
-        "Skia not found.\n"
-        "Install it with:\n"
-        "  ~/vcpkg/vcpkg install skia sdl2 --triplet arm64-osx\n"
-        "Then configure CMake with:\n"
-        "  -DCMAKE_TOOLCHAIN_FILE=~/vcpkg/scripts/buildsystems/vcpkg.cmake"
-    )
-endif()
-
-# -----------------------------------------------------------------------------
-# SDL2
-# -----------------------------------------------------------------------------
-
-pkg_check_modules(SDL2 QUIET IMPORTED_TARGET sdl2)
-
-if(SDL2_FOUND)
-    set(SDL2_LIBS PkgConfig::SDL2)
-else()
+if(VGBENCH_CPP_ENGINES)
+  find_package(PkgConfig QUIET)
+  if(PkgConfig_FOUND)
+    pkg_check_modules(SDL2 QUIET IMPORTED_TARGET sdl2)
+  endif()
+  if(SDL2_FOUND)
+    set(VGBENCH_SDL_TARGET PkgConfig::SDL2)
+  else()
     find_package(SDL2 CONFIG REQUIRED)
-
     if(TARGET SDL2::SDL2)
-        set(SDL2_LIBS SDL2::SDL2)
+      set(VGBENCH_SDL_TARGET SDL2::SDL2)
     elseif(TARGET SDL2::SDL2-static)
-        set(SDL2_LIBS SDL2::SDL2-static)
+      set(VGBENCH_SDL_TARGET SDL2::SDL2-static)
     else()
-        message(FATAL_ERROR "SDL2 target not found.")
+      message(FATAL_ERROR "SDL2 was found but did not provide an SDL2 target")
     endif()
+  endif()
+  find_package(OpenGL REQUIRED)
 endif()
-
-# -----------------------------------------------------------------------------
-# WebGPU
-# -----------------------------------------------------------------------------
-
-pkg_check_modules(WGPU REQUIRED IMPORTED_TARGET wgpu_native)
-set(WGPU_LIBS PkgConfig::WGPU)
-
-# =============================================================================
-# ThorVG
-# =============================================================================
-
-if(RECTBENCH_BUILD_THORVG)
-
-    # Build ThorVG from source using Meson.
-
-    set(THORVG_INSTALL_DIR "${CMAKE_BINARY_DIR}/thorvg-install")
-    set(THORVG_LIBRARY_DIR "${THORVG_INSTALL_DIR}/lib")
-
-    ExternalProject_Add(
-        thorvg_build
-
-        GIT_REPOSITORY https://github.com/thorvg/thorvg.git
-        GIT_TAG main
-        GIT_SHALLOW TRUE
-
-        PREFIX "${CMAKE_BINARY_DIR}/thorvg"
-
-        CONFIGURE_COMMAND
-            meson setup
-                <SOURCE_DIR>/build
-                <SOURCE_DIR>
-                --prefix=${THORVG_INSTALL_DIR}
-                --libdir=lib
-                --buildtype=release
-                -Ddefault_library=shared
-                -Dbindings=cpp
-                -Dloaders=all
-                -Dsavers=all
-
-        BUILD_COMMAND
-            meson compile -C <SOURCE_DIR>/build
-
-        INSTALL_COMMAND
-            meson install -C <SOURCE_DIR>/build
-
-        BUILD_BYPRODUCTS
-            "${THORVG_LIBRARY_DIR}/${CMAKE_SHARED_LIBRARY_PREFIX}thorvg${CMAKE_SHARED_LIBRARY_SUFFIX}"
-    )
-
-    add_library(rectbench_thorvg UNKNOWN IMPORTED GLOBAL)
-
-    set_target_properties(rectbench_thorvg PROPERTIES
-        IMPORTED_LOCATION
-            "${THORVG_LIBRARY_DIR}/${CMAKE_SHARED_LIBRARY_PREFIX}thorvg${CMAKE_SHARED_LIBRARY_SUFFIX}"
-
-        INTERFACE_INCLUDE_DIRECTORIES
-            "${THORVG_INSTALL_DIR}/include"
-    )
-
-    add_dependencies(rectbench_thorvg thorvg_build)
-
-    set(THORVG_TARGET rectbench_thorvg)
-
-else()
-
-    # Use an installed ThorVG package through pkg-config.
-    #
-    # If thorvg.pc is not installed in a standard location,
-    # add its directory to PKG_CONFIG_PATH.
-    #
-    # Example:
-    #
-    # export PKG_CONFIG_PATH=/path/to/thorvg/lib/pkgconfig:$PKG_CONFIG_PATH
-    #
-
-    pkg_check_modules(THORVG REQUIRED IMPORTED_TARGET thorvg-1)
-
-    set(THORVG_TARGET PkgConfig::THORVG)
-
-endif()
-
-# =============================================================================
-# Platform Frameworks
-# =============================================================================
 
 if(APPLE)
-
-    set(SKIA_FRAMEWORKS
-        "-framework CoreFoundation"
-        "-framework CoreGraphics"
-        "-framework CoreText"
-        "-framework CoreServices"
-        "-framework OpenGL"
-        "-framework Metal"
-        "-framework IOKit"
-        "-framework AppKit"
-        "-framework Foundation"
-    )
-
-    set(THORVG_FRAMEWORKS
-        "-framework CoreGraphics"
-        "-framework Metal"
-        "-framework QuartzCore"
-        "-framework Foundation"
-        "-framework AppKit"
-    )
-
-else()
-
-    set(SKIA_FRAMEWORKS)
-    set(THORVG_FRAMEWORKS)
-
+  set(VGBENCH_SKIA_FRAMEWORKS
+    "-framework CoreFoundation" "-framework CoreGraphics"
+    "-framework CoreText" "-framework CoreServices" "-framework Metal"
+    "-framework IOKit" "-framework AppKit" "-framework Foundation"
+  )
+  set(VGBENCH_THORVG_FRAMEWORKS
+    "-framework CoreGraphics" "-framework Metal" "-framework QuartzCore"
+    "-framework Foundation" "-framework AppKit"
+  )
 endif()
 
-# =============================================================================
-# Common Library
-# =============================================================================
+if(VGBENCH_ENABLE_SKIA)
+  find_package(unofficial-skia CONFIG QUIET)
+  if(NOT unofficial-skia_FOUND)
+    message(FATAL_ERROR
+      "Skia not found. Install vcpkg skia or configure with "
+      "-DVGBENCH_ENABLE_SKIA=OFF when selecting another engine.")
+  endif()
+  set(VGBENCH_SKIA_VERSION "unknown" CACHE STRING "Skia version metadata")
+  set(VGBENCH_SKIA_REVISION "unknown" CACHE STRING "Skia revision metadata")
 
-add_library(rectbench_common INTERFACE)
-
-target_include_directories(
-    rectbench_common
-    INTERFACE
-        ${CMAKE_SOURCE_DIR}/src/common
-)
-
-# =============================================================================
-# Helper Functions
-# =============================================================================
-
-find_package(OpenGL REQUIRED)
-
-function(add_skia_benchmark NAME SOURCE)
-
-    add_executable(${NAME} ${SOURCE})
-
-    target_link_libraries(${NAME}
-        PRIVATE
-            rectbench_common
-            ${SKIA_LIBS}
-            ${SDL2_LIBS}
-            ${SKIA_FRAMEWORKS}
-            OpenGL::GL
+  function(add_skia_benchmark WORKLOAD)
+    set(TARGET_NAME "${WORKLOAD}bench_skia_sdl")
+    add_executable(${TARGET_NAME} "src/skia/${TARGET_NAME}.cpp")
+    target_compile_definitions(${TARGET_NAME} PRIVATE
+      VGBENCH_SKIA_VERSION="${VGBENCH_SKIA_VERSION}"
+      VGBENCH_SKIA_REVISION="${VGBENCH_SKIA_REVISION}"
     )
-
-endfunction()
-
-function(add_thorvg_benchmark NAME SOURCE)
-
-    add_executable(${NAME} ${SOURCE})
-
-    target_link_libraries(${NAME}
-        PRIVATE
-            rectbench_common
-            ${THORVG_TARGET}
-            ${SDL2_LIBS}
-            ${WGPU_LIBS}
-            ${THORVG_FRAMEWORKS}
+    target_link_libraries(${TARGET_NAME} PRIVATE
+      vgbench_common unofficial::skia::skia ${VGBENCH_SDL_TARGET}
+      OpenGL::GL ${VGBENCH_SKIA_FRAMEWORKS}
     )
-
-    if(RECTBENCH_BUILD_THORVG)
-        add_dependencies(${NAME} thorvg_build)
-    endif()
-
-endfunction()
-
-# =============================================================================
-# Skia Benchmarks
-# =============================================================================
-
-add_skia_benchmark(rectbench_skia_sdl           src/skia/rectbench_skia_sdl.cpp)
-add_skia_benchmark(circlebench_skia_sdl         src/skia/circlebench_skia_sdl.cpp)
-add_skia_benchmark(strokebench_skia_sdl         src/skia/strokebench_skia_sdl.cpp)
-add_skia_benchmark(imagebench_skia_sdl          src/skia/imagebench_skia_sdl.cpp)
-add_skia_benchmark(lineargradientbench_skia_sdl src/skia/lineargradientbench_skia_sdl.cpp)
-add_skia_benchmark(radialgradientbench_skia_sdl src/skia/radialgradientbench_skia_sdl.cpp)
-add_skia_benchmark(strokerectbench_skia_sdl     src/skia/strokerectbench_skia_sdl.cpp)
-
-# =============================================================================
-# ThorVG Benchmarks
-# =============================================================================
-
-add_thorvg_benchmark(rectbench_thorvg_sdl           src/thorvg/rectbench_thorvg_sdl.cpp)
-add_thorvg_benchmark(circlebench_thorvg_sdl         src/thorvg/circlebench_thorvg_sdl.cpp)
-add_thorvg_benchmark(strokebench_thorvg_sdl         src/thorvg/strokebench_thorvg_sdl.cpp)
-add_thorvg_benchmark(imagebench_thorvg_sdl          src/thorvg/imagebench_thorvg_sdl.cpp)
-add_thorvg_benchmark(lineargradientbench_thorvg_sdl src/thorvg/lineargradientbench_thorvg_sdl.cpp)
-add_thorvg_benchmark(radialgradientbench_thorvg_sdl src/thorvg/radialgradientbench_thorvg_sdl.cpp)
-add_thorvg_benchmark(strokerectbench_thorvg_sdl     src/thorvg/strokerectbench_thorvg_sdl.cpp)
-
-# =============================================================================
-# Configuration Summary
-# =============================================================================
-
-message(STATUS "")
-message(STATUS "========== Rectbench Configuration ==========")
-message(STATUS "Skia        : ${SKIA_LIBS}")
-message(STATUS "SDL2        : ${SDL2_LIBS}")
-message(STATUS "WebGPU      : pkg-config (wgpu_native)")
-
-if(RECTBENCH_BUILD_THORVG)
-    message(STATUS "ThorVG      : source build")
-    message(STATUS "Install Dir : ${THORVG_INSTALL_DIR}")
-else()
-    message(STATUS "ThorVG      : pkg-config")
-    message(STATUS "Version     : ${THORVG_VERSION}")
+  endfunction()
+  foreach(WORKLOAD IN LISTS VGBENCH_WORKLOADS)
+    add_skia_benchmark(${WORKLOAD})
+  endforeach()
 endif()
 
-message(STATUS "=============================================")
+if(VGBENCH_ENABLE_THORVG)
+  if(NOT PkgConfig_FOUND)
+    find_package(PkgConfig REQUIRED)
+  endif()
+  pkg_check_modules(WGPU QUIET IMPORTED_TARGET wgpu_native)
+  if(WGPU_FOUND)
+    set(VGBENCH_WGPU_TARGET PkgConfig::WGPU)
+  elseif(WGPU_LIB AND WGPU_INCLUDE)
+    add_library(vgbench_wgpu_native UNKNOWN IMPORTED)
+    set_target_properties(vgbench_wgpu_native PROPERTIES
+      IMPORTED_LOCATION "${WGPU_LIB}"
+      INTERFACE_INCLUDE_DIRECTORIES "${WGPU_INCLUDE}"
+    )
+    set(VGBENCH_WGPU_TARGET vgbench_wgpu_native)
+  else()
+    message(FATAL_ERROR
+      "wgpu-native is required for ThorVG. Provide its pkg-config file or "
+      "configure WGPU_LIB and WGPU_INCLUDE.")
+  endif()
+
+  if(VGBENCH_BUILD_THORVG_FROM_SOURCE)
+    include(ExternalProject)
+    set(VGBENCH_THORVG_INSTALL_DIR "${CMAKE_BINARY_DIR}/thorvg-install")
+    set(VGBENCH_THORVG_LIBRARY_DIR "${VGBENCH_THORVG_INSTALL_DIR}/lib")
+    file(MAKE_DIRECTORY "${VGBENCH_THORVG_INSTALL_DIR}/include")
+    ExternalProject_Add(thorvg_build
+      GIT_REPOSITORY https://github.com/thorvg/thorvg.git
+      GIT_TAG main
+      GIT_SHALLOW TRUE
+      PREFIX "${CMAKE_BINARY_DIR}/thorvg"
+      CONFIGURE_COMMAND
+        meson setup
+          <SOURCE_DIR>/build
+          <SOURCE_DIR>
+          --prefix=${VGBENCH_THORVG_INSTALL_DIR}
+          --libdir=lib
+          --buildtype=release
+          -Ddefault_library=shared
+          -Dbindings=cpp
+          -Dloaders=all
+          -Dsavers=all
+          -Dengines=all
+      BUILD_COMMAND meson compile -C <SOURCE_DIR>/build
+      INSTALL_COMMAND meson install -C <SOURCE_DIR>/build
+      BUILD_BYPRODUCTS
+        "${VGBENCH_THORVG_LIBRARY_DIR}/${CMAKE_SHARED_LIBRARY_PREFIX}thorvg${CMAKE_SHARED_LIBRARY_SUFFIX}"
+    )
+
+    add_library(vgbench_thorvg UNKNOWN IMPORTED GLOBAL)
+    set_target_properties(vgbench_thorvg PROPERTIES
+      IMPORTED_LOCATION
+        "${VGBENCH_THORVG_LIBRARY_DIR}/${CMAKE_SHARED_LIBRARY_PREFIX}thorvg${CMAKE_SHARED_LIBRARY_SUFFIX}"
+      INTERFACE_INCLUDE_DIRECTORIES "${VGBENCH_THORVG_INSTALL_DIR}/include"
+    )
+    add_dependencies(vgbench_thorvg thorvg_build)
+    set(VGBENCH_THORVG_TARGET vgbench_thorvg)
+    set(VGBENCH_THORVG_DETECTED_VERSION "unknown")
+  else()
+    pkg_check_modules(THORVG REQUIRED IMPORTED_TARGET thorvg-1)
+    set(VGBENCH_THORVG_TARGET PkgConfig::THORVG)
+    set(VGBENCH_THORVG_DETECTED_VERSION "${THORVG_VERSION}")
+  endif()
+
+  set(VGBENCH_THORVG_VERSION "${VGBENCH_THORVG_DETECTED_VERSION}"
+    CACHE STRING "ThorVG version metadata")
+  set(VGBENCH_THORVG_REVISION "unknown"
+    CACHE STRING "ThorVG revision metadata")
+
+  function(add_thorvg_benchmark WORKLOAD)
+    set(TARGET_NAME "${WORKLOAD}bench_thorvg_sdl")
+    add_executable(${TARGET_NAME} "src/thorvg/${TARGET_NAME}.cpp")
+    target_compile_definitions(${TARGET_NAME} PRIVATE
+      VGBENCH_THORVG_VERSION="${VGBENCH_THORVG_VERSION}"
+      VGBENCH_THORVG_REVISION="${VGBENCH_THORVG_REVISION}"
+    )
+    target_link_libraries(${TARGET_NAME} PRIVATE
+      vgbench_common ${VGBENCH_THORVG_TARGET} ${VGBENCH_SDL_TARGET}
+      OpenGL::GL ${VGBENCH_WGPU_TARGET} ${VGBENCH_THORVG_FRAMEWORKS}
+    )
+  endfunction()
+  foreach(WORKLOAD IN LISTS VGBENCH_WORKLOADS)
+    add_thorvg_benchmark(${WORKLOAD})
+  endforeach()
+endif()
+
+message(STATUS "=== vgbench configuration ===")
+message(STATUS "Skia:       ${VGBENCH_ENABLE_SKIA}")
+message(STATUS "ThorVG:     ${VGBENCH_ENABLE_THORVG}")
