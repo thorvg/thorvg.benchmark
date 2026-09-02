@@ -1,0 +1,27 @@
+[package]
+name = "pathfinder-bench"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+bench-common = { path = "../bench-common" }
+gl = "0.14.0"
+image = { version = "0.25.9", default-features = false, features = ["jpeg", "png"] }
+pathfinder_canvas = "0.5.0"
+pathfinder_color = "0.5.0"
+pathfinder_content = "0.5.0"
+pathfinder_geometry = "0.5.1"
+pathfinder_gl = "0.5.0"
+pathfinder_renderer = "0.5.0"
+pathfinder_resources = "0.5.0"
+pathfinder_simd = "0.5.6"
+sdl2 = { version = "0.38.0", features = ["use-pkgconfig"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+
+[workspace]
+resolver = "2"
