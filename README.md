@@ -52,7 +52,16 @@ cmake --build build -j
 ```bash
 ./build/rectbench_skia_sdl
 ./build/rectbench_thorvg_sdl
+./build/multiimagebench_skia_sdl
+./build/multiimagebench_thorvg_sdl
 ```
+
+The `multiimagebench` executables draw 5,000 image instances at generated
+positions and sizes, selecting each instance from a fixed set of 25 byte-distinct
+PNG assets in the Kenney Animal Pack. The image sequence is generated once from
+`--seed` and is identical across Skia and ThorVG; the assets are reused while
+rendering.
+The multi-image scene uses alpha values from 253 through 255.
 
 ## Benchmark CLI Options
 
@@ -113,7 +122,7 @@ python3 tools/run_all.py --seed=42 --runs 3
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--runs N` | `3` | Number of runs per variant |
-| `--benchmarks=...` | all | Comma-separated: `rect,circle,stroke,image,lineargradient,radialgradient` |
+| `--benchmarks=...` | all | Comma-separated: `rect,circle,stroke,image,multiimage,lineargradient,radialgradient` |
 | `--engines=...` | `skia,thorvg` | Engines to test |
 | `--backends=...` | `cpu,gl` | Backends: `cpu`, `gl`, `webgpu` (ThorVG only) |
 | `--scenes=...` | `default,rotation` | Scene modes |
@@ -232,6 +241,15 @@ cmake --build build -j
 rm -rf build
 # Repeat the build step
 ```
+
+## Image Assets
+
+The [Kenney Animal Pack](resource/image/kenney-animal-pack/README.md) provides
+80 2D PNG assets (72 unique file contents) for image benchmarks. The
+`multiimagebench` manifest uses 25 byte-distinct files from this pack and
+selects them deterministically with the benchmark seed. These assets are CC0,
+separately from this repository's MIT license; the original [license
+notice](resource/image/kenney-animal-pack/License.txt) is included.
 
 ## Notes
 
