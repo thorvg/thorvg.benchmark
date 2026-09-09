@@ -224,7 +224,7 @@ def main(argv: list[str]) -> int:
     )
     parser.add_argument(
         "--benchmarks",
-        default="rect,circle,stroke,image,lineargradient,radialgradient",
+        default="rect,circle,stroke,image,multiimage,lineargradient,radialgradient",
         help="Comma-separated benchmarks to run (or 'all')",
     )
     parser.add_argument(
@@ -300,7 +300,7 @@ def main(argv: list[str]) -> int:
 
     # We don't have a rigid list of "all" benchmarks here, but user can say "all" if we define it.
     # For now, let's treat "all" as the default list.
-    ALL_BENCHS = ["rect", "circle", "stroke", "image", "lineargradient", "radialgradient"]
+    ALL_BENCHS = ["rect", "circle", "stroke", "image", "multiimage", "lineargradient", "radialgradient"]
     benchmarks_list = _expand_all(benchmarks_list, ALL_BENCHS)
     engines = _expand_all(engines, ["skia", "thorvg"])
     backends = _expand_all(backends, ["cpu", "gl", "webgpu"])
