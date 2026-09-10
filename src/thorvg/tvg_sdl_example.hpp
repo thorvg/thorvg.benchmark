@@ -46,6 +46,9 @@ inline bool verify(tvg::Result result, const std::string &fail_msg = {}) {
   case tvg::Result::NonSupport:
     std::cerr << "ThorVG NonSupport: " << fail_msg << "\n";
     return false;
+  case tvg::Result::SystemError:
+    std::cerr << "ThorVG SystemError: " << fail_msg << "\n";
+    return false;
   case tvg::Result::Unknown:
     std::cerr << "ThorVG Unknown: " << fail_msg << "\n";
     return false;
