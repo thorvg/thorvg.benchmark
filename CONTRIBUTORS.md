@@ -6,4 +6,7 @@ For definitions and responsibilities of each project role, see [Roles & Responsi
 - Hermet Park @hermet
 
 ## Maintainer
-- Jay WenJie  @wenjieshen
+- Jay WenJie @wenjieshen
+
+## Contributor
+- SoonGeon Noh @Nor-s
