@@ -63,6 +63,46 @@ PNG assets in the Kenney Animal Pack. The image sequence is generated once from
 rendering.
 The multi-image scene uses alpha values from 253 through 255.
 
+### Stroke workload
+
+The `strokebench` executables draw 5,000 paths in a repeating, nearly equal mix
+of everyday design shapes:
+
+| Shape | Geometry | Typical use |
+|-------|----------|-------------|
+| Smooth S-connector | Two cubic curves, open | Flow diagrams and curved connectors |
+| Rounded elbow connector | Three straight runs and two cubic turns, open | Routed diagram connections |
+| Speech-bubble outline | Four curved corners and a triangular tail, closed | Chat and annotation icons |
+
+Both engines use the same seeded geometry, colors, positions, and stroke widths.
+Layout boxes range from 48 to 200 px on each axis, with 2–8 px strokes and round
+caps and joins. Paths are built once before timing; the existing `default`
+translation/scale and `rotation` animation modes still apply.
+
+These are ordinary stroked paths rather than rectangles, ovals, rounded
+rectangles, or single lines. They avoid Skia's corresponding
+[primitive-shape shortcuts](https://skia.googlesource.com/skia/+/refs/heads/main/src/gpu/ganesh/SurfaceDrawContext.cpp),
+while allowing normal path rendering optimizations. `strokerectbench` remains
+available as the rectangle-specific workload.
+
+Use `--opacity=0..1` to set the same stroke opacity on every path (default: `1`).
+Both engines round this to an 8-bit color alpha: `0.5` becomes `128/255`.
+Changing opacity preserves geometry, colors, and animation for a given seed.
+Opacity `0` is useful for a visibility check; it does not measure visible stroke
+rendering work.
+
+```bash
+./build/strokebench_skia_sdl --backend=cpu --opacity=1 --vsync=0
+./build/strokebench_thorvg_sdl --backend=cpu --opacity=1 --vsync=0
+
+./build/strokebench_skia_sdl --backend=gl --scene=rotation --opacity=0.5 --vsync=0
+./build/strokebench_thorvg_sdl --backend=gl --scene=rotation --opacity=0.5 --vsync=0
+```
+
+Stroke result metadata includes `"workload": "designer-strokes-v1"` and the
+requested `opacity`. This workload replaces the old rectangle-only stroke
+benchmark; its results are not directly comparable with those historical runs.
+
 ## Benchmark CLI Options
 
 | Option | Default | Description |
@@ -75,6 +115,7 @@ The multi-image scene uses alpha values from 253 through 255.
 | `--width=INT` | `2560` | Window/render width |
 | `--height=INT` | `1440` | Window/render height |
 | `--vsync=0\|1` | `0` | Enable VSync |
+| `--opacity=FLOAT` | `1` | Strokebench only: stroke opacity from 0 to 1 |
 | `--output=PATH` | auto | Output JSON file path |
 
 ### Examples
