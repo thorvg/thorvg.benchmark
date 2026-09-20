@@ -15,7 +15,8 @@
 namespace bench {
 
 inline int run_benchmark(const bench::CliOptions &opts,
-                         bench::BenchmarkWindow &window) {
+                         bench::BenchmarkWindow &window,
+                         const std::string &workload = {}) {
   if (!window.ready()) {
     std::cerr << "Failed to prepare initial " << window.engine_title()
               << " scene.\n";
@@ -87,6 +88,8 @@ inline int run_benchmark(const bench::CliOptions &opts,
   meta.scene_mode = bench::scene_mode_name(opts.scene_mode);
   meta.warmup_frames = opts.warmup;
   meta.measured_frames = static_cast<uint32_t>(frame_times.size());
+  meta.workload = workload;
+  meta.opacity = opts.opacity;
 
   const std::string output_path = opts.output_path.empty()
                                       ? bench::get_default_output_path(meta)
@@ -102,4 +105,3 @@ inline int run_benchmark(const bench::CliOptions &opts,
 }
 
 } // namespace bench
-

@@ -21,6 +21,8 @@ struct BenchmarkMetadata {
   std::string scene_mode; // "default" or "rotation"
   uint32_t warmup_frames = 0;
   uint32_t measured_frames = 0;
+  std::string workload;
+  float opacity = 1.0f;
 };
 
 /// Generate timestamp string for filenames
@@ -104,7 +106,14 @@ inline bool write_results(const std::string &path, const BenchmarkStats &stats,
   file << "    \"vsync\": " << (meta.vsync ? "true" : "false") << ",\n";
   file << "    \"scene_mode\": \"" << json_escape(meta.scene_mode) << "\",\n";
   file << "    \"warmup_frames\": " << meta.warmup_frames << ",\n";
-  file << "    \"measured_frames\": " << meta.measured_frames << "\n";
+  file << "    \"measured_frames\": " << meta.measured_frames;
+  if (!meta.workload.empty()) {
+    file << ",\n"
+         << "    \"workload\": \"" << json_escape(meta.workload) << "\",\n"
+         << "    \"opacity\": " << meta.opacity << "\n";
+  } else {
+    file << "\n";
+  }
   file << "  }\n";
   file << "}\n";
 

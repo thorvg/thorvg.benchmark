@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <cmath>
 #include <iostream>
 #include <string>
 #include <thread>
@@ -33,6 +34,7 @@ struct CliOptions {
   uint32_t height = 1440;            // Window/render height
   bool vsync = false;
   bool gpu_sync = false;             // GL only: glFinish before stopping timer
+  float opacity = 1.0f;              // Strokebench only: [0, 1]
   std::string output_path;           // Empty means auto-generate
   bool wgpu_external_device = false; // WebGPU: use external device
 
@@ -113,6 +115,8 @@ inline void print_usage(const char *program_name) {
             << "  --vsync=0|1               VSync (default: 0)\n"
             << "  --gpu_sync=0|1            GL only: glFinish for accurate GPU "
                "timing (default: 0)\n"
+            << "  --opacity=FLOAT            Strokebench only: stroke opacity [0, 1] "
+               "(default: 1)\n"
             << "  --output=PATH             Output JSON path (default: "
                "auto-generated)\n"
             << "  --wgpu_external_device=0|1  WebGPU: use external device "
@@ -186,6 +190,16 @@ inline CliOptions parse_cli(int argc, char *argv[]) {
       opts.vsync = bool_val;
     } else if (parse_key_value(arg, "--gpu_sync", bool_val)) {
       opts.gpu_sync = bool_val;
+    } else if (parse_key_value(arg, "--opacity", str_val)) {
+      char *end = nullptr;
+      const float value = std::strtof(str_val.c_str(), &end);
+      if (str_val.empty() || end == str_val.c_str() || *end != '\0' ||
+          !std::isfinite(value) || value < 0.0f || value > 1.0f) {
+        opts.valid = false;
+        opts.error_message = "Invalid opacity: " + str_val;
+      } else {
+        opts.opacity = value;
+      }
     } else if (parse_key_value(arg, "--output", str_val)) {
       opts.output_path = str_val;
     } else if (parse_key_value(arg, "--wgpu_external_device", bool_val)) {
