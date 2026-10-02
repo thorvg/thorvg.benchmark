@@ -37,7 +37,7 @@ inline int run_benchmark(const bench::CliOptions &opts,
   while (running && frame_index < total_frames) {
     window.pump_events(running);
 
-    auto start_time = std::chrono::high_resolution_clock::now();
+    auto start_time = std::chrono::steady_clock::now();
 
     if (!window.update(frame_index)) {
       std::cerr << window.engine_title() << " update failed.\n";
@@ -51,7 +51,7 @@ inline int run_benchmark(const bench::CliOptions &opts,
 
     window.refresh();
 
-    auto end_time = std::chrono::high_resolution_clock::now();
+    auto end_time = std::chrono::steady_clock::now();
 
     if (frame_index >= opts.warmup) {
       const double frame_ms =
