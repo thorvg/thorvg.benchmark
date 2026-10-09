@@ -28,7 +28,7 @@ byte-identical. When selecting a set of at least 25 different images, count
 unique contents rather than filenames. Keep the chosen asset order fixed and
 use the same seed and selection procedure for both rendering engines.
 
-The `multiimagebench` executables use a fixed manifest of 25 byte-distinct PNGs
+The `multiimage` executables use a fixed manifest of 25 byte-distinct PNGs
 from this pack. Each of the benchmark's 5,000 rendered instances selects one
 of those files using the command-line seed; the same generated sequence is
 used by both rendering engines. The manifest order is documented in

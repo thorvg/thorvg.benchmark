@@ -231,27 +231,27 @@ endfunction()
 # Skia Benchmarks
 # =============================================================================
 
-add_skia_benchmark(rectbench_skia_sdl           src/skia/rectbench_skia_sdl.cpp)
-add_skia_benchmark(circlebench_skia_sdl         src/skia/circlebench_skia_sdl.cpp)
-add_skia_benchmark(strokebench_skia_sdl         src/skia/strokebench_skia_sdl.cpp)
-add_skia_benchmark(imagebench_skia_sdl          src/skia/imagebench_skia_sdl.cpp)
-add_skia_benchmark(multiimagebench_skia_sdl     src/skia/multiimagebench_skia_sdl.cpp)
-add_skia_benchmark(lineargradientbench_skia_sdl src/skia/lineargradientbench_skia_sdl.cpp)
-add_skia_benchmark(radialgradientbench_skia_sdl src/skia/radialgradientbench_skia_sdl.cpp)
-add_skia_benchmark(strokerectbench_skia_sdl     src/skia/strokerectbench_skia_sdl.cpp)
+add_skia_benchmark(rect_skia_sdl           src/skia/rectbench_skia_sdl.cpp)
+add_skia_benchmark(circle_skia_sdl         src/skia/circlebench_skia_sdl.cpp)
+add_skia_benchmark(stroke_skia_sdl         src/skia/strokebench_skia_sdl.cpp)
+add_skia_benchmark(image_skia_sdl          src/skia/imagebench_skia_sdl.cpp)
+add_skia_benchmark(multiimage_skia_sdl     src/skia/multiimagebench_skia_sdl.cpp)
+add_skia_benchmark(lineargradient_skia_sdl src/skia/lineargradientbench_skia_sdl.cpp)
+add_skia_benchmark(radialgradient_skia_sdl src/skia/radialgradientbench_skia_sdl.cpp)
+add_skia_benchmark(strokerect_skia_sdl     src/skia/strokerectbench_skia_sdl.cpp)
 
 # =============================================================================
 # ThorVG Benchmarks
 # =============================================================================
 
-add_thorvg_benchmark(rectbench_thorvg_sdl           src/thorvg/rectbench_thorvg_sdl.cpp)
-add_thorvg_benchmark(circlebench_thorvg_sdl         src/thorvg/circlebench_thorvg_sdl.cpp)
-add_thorvg_benchmark(strokebench_thorvg_sdl         src/thorvg/strokebench_thorvg_sdl.cpp)
-add_thorvg_benchmark(imagebench_thorvg_sdl          src/thorvg/imagebench_thorvg_sdl.cpp)
-add_thorvg_benchmark(multiimagebench_thorvg_sdl     src/thorvg/multiimagebench_thorvg_sdl.cpp)
-add_thorvg_benchmark(lineargradientbench_thorvg_sdl src/thorvg/lineargradientbench_thorvg_sdl.cpp)
-add_thorvg_benchmark(radialgradientbench_thorvg_sdl src/thorvg/radialgradientbench_thorvg_sdl.cpp)
-add_thorvg_benchmark(strokerectbench_thorvg_sdl     src/thorvg/strokerectbench_thorvg_sdl.cpp)
+add_thorvg_benchmark(rect_tvg_sdl           src/thorvg/rectbench_thorvg_sdl.cpp)
+add_thorvg_benchmark(circle_tvg_sdl         src/thorvg/circlebench_thorvg_sdl.cpp)
+add_thorvg_benchmark(stroke_tvg_sdl         src/thorvg/strokebench_thorvg_sdl.cpp)
+add_thorvg_benchmark(image_tvg_sdl          src/thorvg/imagebench_thorvg_sdl.cpp)
+add_thorvg_benchmark(multiimage_tvg_sdl     src/thorvg/multiimagebench_thorvg_sdl.cpp)
+add_thorvg_benchmark(lineargradient_tvg_sdl src/thorvg/lineargradientbench_thorvg_sdl.cpp)
+add_thorvg_benchmark(radialgradient_tvg_sdl src/thorvg/radialgradientbench_thorvg_sdl.cpp)
+add_thorvg_benchmark(strokerect_tvg_sdl     src/thorvg/strokerectbench_thorvg_sdl.cpp)
 
 # =============================================================================
 # Configuration Summary
