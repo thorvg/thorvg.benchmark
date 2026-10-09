@@ -143,28 +143,11 @@ def _variants(
             if engine not in supported_backends:
                 raise ValueError(f"unknown engine: {engine}")
 
-            # Construct binary path: {bench}_{engine}_sdl
-            # Valid names e.g. rectbench_skia_sdl, circlebench_thorvg_sdl
-            # So if bench is "rect", binary is "rectbench_skia_sdl"
-            # But the user might pass "rectbench" or "rect". Let's normalize.
-            # Actually, per existing names: rectbench_skia_sdl
-            # So if bench="rect", we want "rectbench".
-            # Let's assume the user passes "rect", "circle" etc.
-            
-            # Helper to map short name -> full bench prefix if needed,
-            # or just assume bench + "bench" if it doesn't have it.
-            # Existing specific names:
-            #   rectbench_skia_sdl
-            #   circlebench_skia_sdl
-            #   strokebench_skia_sdl
-            #   imagebench_skia_sdl
-            #   lineargradientbench_skia_sdl
-            #   radialgradientbench_skia_sdl
-            
-            # Logic: if 'bench' is suffix, leave it, else append 'bench'.
-            bench_prefix = bench if bench.endswith("bench") else f"{bench}bench"
-            
-            bin_name = f"{bench_prefix}_{engine}_sdl"
+            # Accept both short names and legacy names ending in bench.
+            bench_prefix = bench.removesuffix("bench")
+
+            binary_engine = "tvg" if engine == "thorvg" else engine
+            bin_name = f"{bench_prefix}_{binary_engine}_sdl"
             binary_path = bin_dir / bin_name
 
             for backend in backends:

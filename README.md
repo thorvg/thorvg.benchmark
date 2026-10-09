@@ -50,13 +50,13 @@ cmake --build build -j
 ### 4. Run
 
 ```bash
-./build/rectbench_skia_sdl
-./build/rectbench_thorvg_sdl
-./build/multiimagebench_skia_sdl
-./build/multiimagebench_thorvg_sdl
+./build/rect_skia_sdl
+./build/rect_tvg_sdl
+./build/multiimage_skia_sdl
+./build/multiimage_tvg_sdl
 ```
 
-The `multiimagebench` executables draw 5,000 image instances at generated
+The `multiimage` executables draw 5,000 image instances at generated
 positions and sizes, selecting each instance from a fixed set of 25 byte-distinct
 PNG assets in the Kenney Animal Pack. The image sequence is generated once from
 `--seed` and is identical across Skia and ThorVG; the assets are reused while
@@ -65,7 +65,7 @@ The multi-image scene uses alpha values from 253 through 255.
 
 ### Stroke workload
 
-The `strokebench` executables draw 5,000 paths in a repeating, nearly equal mix
+The `stroke` executables draw 5,000 paths in a repeating, nearly equal mix
 of everyday design shapes:
 
 | Shape | Geometry | Typical use |
@@ -82,7 +82,7 @@ translation/scale and `rotation` animation modes still apply.
 These are ordinary stroked paths rather than rectangles, ovals, rounded
 rectangles, or single lines. They avoid Skia's corresponding
 [primitive-shape shortcuts](https://skia.googlesource.com/skia/+/refs/heads/main/src/gpu/ganesh/SurfaceDrawContext.cpp),
-while allowing normal path rendering optimizations. `strokerectbench` remains
+while allowing normal path rendering optimizations. `strokerect` remains
 available as the rectangle-specific workload.
 
 Use `--opacity=0..1` to set the same stroke opacity on every path (default: `1`).
@@ -92,11 +92,11 @@ Opacity `0` is useful for a visibility check; it does not measure visible stroke
 rendering work.
 
 ```bash
-./build/strokebench_skia_sdl --backend=cpu --opacity=1 --vsync=0
-./build/strokebench_thorvg_sdl --backend=cpu --opacity=1 --vsync=0
+./build/stroke_skia_sdl --backend=cpu --opacity=1 --vsync=0
+./build/stroke_tvg_sdl --backend=cpu --opacity=1 --vsync=0
 
-./build/strokebench_skia_sdl --backend=gl --scene=rotation --opacity=0.5 --vsync=0
-./build/strokebench_thorvg_sdl --backend=gl --scene=rotation --opacity=0.5 --vsync=0
+./build/stroke_skia_sdl --backend=gl --scene=rotation --opacity=0.5 --vsync=0
+./build/stroke_tvg_sdl --backend=gl --scene=rotation --opacity=0.5 --vsync=0
 ```
 
 Stroke result metadata includes `"workload": "designer-strokes-v1"` and the
@@ -122,17 +122,17 @@ benchmark; its results are not directly comparable with those historical runs.
 
 ```bash
 # Quick test with fewer frames
-./build/rectbench_skia_sdl --frames=100 --warmup=10
+./build/rect_skia_sdl --frames=100 --warmup=10
 
 # Test with specific backend
-./build/rectbench_thorvg_sdl --backend=gl
+./build/rect_tvg_sdl --backend=gl
 
 # Rotation scene mode
-./build/rectbench_thorvg_sdl --scene=rotation
+./build/rect_tvg_sdl --scene=rotation
 
 # Verify deterministic output (checksums should match)
-./build/rectbench_skia_sdl --backend=cpu --seed=42 --frames=1
-./build/rectbench_thorvg_sdl --backend=cpu --seed=42 --frames=1
+./build/rect_skia_sdl --backend=cpu --seed=42 --frames=1
+./build/rect_tvg_sdl --backend=cpu --seed=42 --frames=1
 ```
 
 ## Tools
@@ -190,11 +190,11 @@ Run the same benchmark multiple times with identical or varied seeds:
 ```bash
 # Fixed seed (all runs identical)
 python3 tools/repeat_seed.py --runs 5 --seed 42 -- \
-  ./build/rectbench_skia_sdl --backend=cpu --frames=200 --warmup=20
+  ./build/rect_skia_sdl --backend=cpu --frames=200 --warmup=20
 
 # Random seeds per run (measure variance)
 python3 tools/repeat_seed.py --runs 5 -- \
-  ./build/rectbench_thorvg_sdl --backend=gl --frames=200
+  ./build/rect_tvg_sdl --backend=gl --frames=200
 ```
 
 **Options:**
@@ -287,7 +287,7 @@ rm -rf build
 
 The [Kenney Animal Pack](resource/image/kenney-animal-pack/README.md) provides
 80 2D PNG assets (72 unique file contents) for image benchmarks. The
-`multiimagebench` manifest uses 25 byte-distinct files from this pack and
+`multiimage` manifest uses 25 byte-distinct files from this pack and
 selects them deterministically with the benchmark seed. These assets are CC0,
 separately from this repository's MIT license; the original [license
 notice](resource/image/kenney-animal-pack/License.txt) is included.

@@ -4,7 +4,7 @@ Repeat a rectbench binary multiple times with the same RNG seed.
 
 Example:
   python3 tools/repeat_seed.py --runs 5 --seed 42 -- \
-    ./build/rectbench_skia_sdl --backend=cpu --frames=200 --warmup=20
+    ./build/rect_skia_sdl --backend=cpu --frames=200 --warmup=20
 """
 
 from __future__ import annotations
@@ -85,7 +85,7 @@ def main(argv: list[str]) -> int:
     if cmd and cmd[0] == "--":
         cmd = cmd[1:]
     if not cmd:
-        parser.error("missing command; pass it after '--', e.g. -- ./build/rectbench_skia_sdl")
+        parser.error("missing command; pass it after '--', e.g. -- ./build/rect_skia_sdl")
 
     runs = args.runs
     if runs <= 0:
