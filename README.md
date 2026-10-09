@@ -29,7 +29,7 @@ brew install cmake ninja meson wgpu-native libomp python3
 # vcpkg (one-time setup)
 git clone https://github.com/microsoft/vcpkg.git
 ./vcpkg/bootstrap-vcpkg.sh
-./vcpkg/vcpkg install skia sdl2 --triplet arm64-osx
+./vcpkg/vcpkg install skia sdl3 --triplet arm64-osx
 
 # thorvg (optionally checkout to a specific tag for testing)
 git clone https://github.com/thorvg/thorvg.git
@@ -254,13 +254,13 @@ Linux builds are validated via GitHub Actions. See [`.github/workflows/linux.yml
 sudo apt-get install -y \
   cmake ninja-build pkg-config python3 meson curl unzip \
   autoconf autoconf-archive automake libtool libtool-bin \
-  libsdl2-dev libgl1-mesa-dev libegl1-mesa-dev \
+  libgl1-mesa-dev libegl1-mesa-dev \
   libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev libxfixes-dev
 
 # vcpkg + Skia
 git clone https://github.com/microsoft/vcpkg.git
 ./vcpkg/bootstrap-vcpkg.sh
-./vcpkg/vcpkg install skia --triplet x64-linux
+./vcpkg/vcpkg install skia sdl3 --triplet x64-linux
 
 # thorvg (optionally checkout to a specific tag for testing)
 git clone https://github.com/thorvg/thorvg.git

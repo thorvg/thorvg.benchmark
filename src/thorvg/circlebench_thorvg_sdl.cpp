@@ -1,3 +1,5 @@
+#include <SDL3/SDL_main.h>
+
 /**
  * Circlebench: ThorVG SDL Benchmark
  *

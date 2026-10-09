@@ -8,9 +8,9 @@
 
 #include <thorvg.h>
 
-#include <SDL2/SDL.h>
+#include <SDL3/SDL.h>
 #ifdef __APPLE__
-#include <SDL2/SDL_metal.h>
+#include <SDL3/SDL_metal.h>
 #endif
 
 #include <webgpu/webgpu.h>
@@ -89,7 +89,7 @@ struct Window : bench::BenchmarkWindow {
                 "Failed to init ThorVG engine")) {
       return;
     }
-    if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+    if (!SDL_Init(SDL_INIT_VIDEO)) {
       std::cerr << "SDL_Init failed: " << SDL_GetError() << "\n";
       tvg::Initializer::term();
       return;
@@ -121,10 +121,10 @@ struct Window : bench::BenchmarkWindow {
   bool pump_events(bool &running) override {
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
-      if (event.type == SDL_QUIT) {
+      if (event.type == SDL_EVENT_QUIT) {
         running = false;
       }
-      if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE) {
+      if (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_ESCAPE) {
         running = false;
       }
     }
@@ -190,11 +190,10 @@ struct SwWindow final : Window {
     }
 
     std::string title = window_title_ + " ThorVG (Software)";
-    window = SDL_CreateWindow(title.c_str(),
-                              SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+    window = bench::create_centered_window(title.c_str(),
                               static_cast<int>(target_width),
                               static_cast<int>(target_height),
-                              SDL_WINDOW_SHOWN | SDL_WINDOW_ALLOW_HIGHDPI);
+                              SDL_WINDOW_HIGH_PIXEL_DENSITY);
     if (!window) {
       std::cerr << "SDL_CreateWindow failed: " << SDL_GetError() << "\n";
       return;
@@ -264,7 +263,7 @@ struct SwWindow final : Window {
       std::cerr << "SDL_GetWindowSurface failed: " << SDL_GetError() << "\n";
       return;
     }
-    if (surface->format->BytesPerPixel != 4 || (surface->pitch % 4) != 0) {
+    if (SDL_BYTESPERPIXEL(surface->format) != 4 || (surface->pitch % 4) != 0) {
       std::cerr << "Unsupported window surface format for SwCanvas target.\n";
       return;
     }
@@ -307,12 +306,11 @@ struct GlWindow final : Window {
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 
     std::string title = window_title_ + " ThorVG (OpenGL)";
-    window = SDL_CreateWindow(title.c_str(),
-                              SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+    window = bench::create_centered_window(title.c_str(),
                               static_cast<int>(target_width),
                               static_cast<int>(target_height),
-                              SDL_WINDOW_SHOWN | SDL_WINDOW_OPENGL |
-                                  SDL_WINDOW_ALLOW_HIGHDPI);
+                              SDL_WINDOW_OPENGL |
+                                  SDL_WINDOW_HIGH_PIXEL_DENSITY);
     if (!window) {
       std::cerr << "SDL_CreateWindow failed: " << SDL_GetError() << "\n";
       return;
@@ -324,7 +322,7 @@ struct GlWindow final : Window {
       return;
     }
 
-    if (SDL_GL_SetSwapInterval(vsync ? 1 : 0) < 0) {
+    if (!SDL_GL_SetSwapInterval(vsync ? 1 : 0)) {
       std::cerr << "Warning: Unable to set VSync: " << SDL_GetError() << "\n";
     }
 
@@ -352,7 +350,7 @@ struct GlWindow final : Window {
     canvas = nullptr;
 
     if (context) {
-      SDL_GL_DeleteContext(context);
+      SDL_GL_DestroyContext(context);
       context = nullptr;
     }
   }
@@ -554,14 +552,13 @@ struct WgWindow final : Window {
       return;
     }
 
-    Uint32 window_flags = SDL_WINDOW_SHOWN | SDL_WINDOW_ALLOW_HIGHDPI;
+    SDL_WindowFlags window_flags = SDL_WINDOW_HIGH_PIXEL_DENSITY;
 #ifdef __APPLE__
     window_flags |= SDL_WINDOW_METAL;
 #endif
 
     std::string title = window_title_ + " ThorVG (WebGPU)";
-    window = SDL_CreateWindow(title.c_str(),
-                              SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+    window = bench::create_centered_window(title.c_str(),
                               static_cast<int>(target_width),
                               static_cast<int>(target_height), window_flags);
     if (!window) {

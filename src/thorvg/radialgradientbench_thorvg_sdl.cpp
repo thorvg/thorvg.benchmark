@@ -1,3 +1,5 @@
+#include <SDL3/SDL_main.h>
+
 #include "benchmark_runner.hpp"
 #include "circle_generator.hpp"
 #include "cli_parser.hpp"

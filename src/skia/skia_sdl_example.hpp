@@ -6,7 +6,7 @@
 #include "benchmark_window.hpp"
 #include "sdl_utils.hpp"
 
-#include <SDL2/SDL.h>
+#include <SDL3/SDL.h>
 
 // Skia headers
 #include "core/SkCanvas.h"
@@ -29,7 +29,7 @@
 #endif
 #endif
 
-#include <SDL2/SDL_opengl.h>
+#include <SDL3/SDL_opengl.h>
 
 #include <cstdint>
 #include <iostream>
@@ -111,9 +111,9 @@ inline bool skia_image_info_from_sdl_surface(const SDL_Surface *surface,
     return false;
   }
 
-  if (surface->format->BytesPerPixel != 4) {
+  if (SDL_BYTESPERPIXEL(surface->format) != 4) {
     std::cerr << "Unsupported SDL surface format: BytesPerPixel="
-              << static_cast<int>(surface->format->BytesPerPixel) << "\n";
+              << static_cast<int>(SDL_BYTESPERPIXEL(surface->format)) << "\n";
     return false;
   }
 
@@ -122,10 +122,10 @@ inline bool skia_image_info_from_sdl_surface(const SDL_Surface *surface,
   Uint32 gmask = 0;
   Uint32 bmask = 0;
   Uint32 amask = 0;
-  if (SDL_PixelFormatEnumToMasks(surface->format->format, &bpp, &rmask, &gmask,
-                                 &bmask, &amask) == SDL_FALSE) {
-    std::cerr << "SDL_PixelFormatEnumToMasks failed for surface format: "
-              << surface->format->format << "\n";
+  if (!SDL_GetMasksForPixelFormat(surface->format, &bpp, &rmask, &gmask,
+                                 &bmask, &amask)) {
+    std::cerr << "SDL_GetMasksForPixelFormat failed for surface format: "
+              << surface->format << "\n";
     return false;
   }
 
@@ -327,7 +327,7 @@ struct Window : bench::BenchmarkWindow {
          const std::string &window_title = "Benchmark")
       : width(target_width), height(target_height), example(example),
         window_title_(window_title) {
-    if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+    if (!SDL_Init(SDL_INIT_VIDEO)) {
       std::cerr << "SDL_Init failed: " << SDL_GetError() << "\n";
       return;
     }
@@ -402,10 +402,9 @@ struct SwWindow final : Window {
 
     std::string title = window_title_ + " Skia (Software)";
     window =
-        SDL_CreateWindow(title.c_str(), SDL_WINDOWPOS_CENTERED,
-                         SDL_WINDOWPOS_CENTERED, static_cast<int>(target_width),
+        bench::create_centered_window(title.c_str(), static_cast<int>(target_width),
                          static_cast<int>(target_height),
-                         SDL_WINDOW_SHOWN | SDL_WINDOW_ALLOW_HIGHDPI);
+                         SDL_WINDOW_HIGH_PIXEL_DENSITY);
     if (!window) {
       std::cerr << "SDL_CreateWindow failed: " << SDL_GetError() << "\n";
       return;
@@ -488,11 +487,10 @@ struct GlWindow final : Window {
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 
     std::string title = window_title_ + " Skia (OpenGL)";
-    window = SDL_CreateWindow(
-        title.c_str(), SDL_WINDOWPOS_CENTERED,
-        SDL_WINDOWPOS_CENTERED, static_cast<int>(target_width),
+    window = bench::create_centered_window(
+        title.c_str(), static_cast<int>(target_width),
         static_cast<int>(target_height),
-        SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_ALLOW_HIGHDPI);
+        SDL_WINDOW_OPENGL | SDL_WINDOW_HIGH_PIXEL_DENSITY);
     if (!window) {
       std::cerr << "SDL_CreateWindow failed: " << SDL_GetError() << "\n";
       return;
@@ -574,7 +572,7 @@ struct GlWindow final : Window {
     gl_interface.reset();
 
     if (context) {
-      SDL_GL_DeleteContext(context);
+      SDL_GL_DestroyContext(context);
       context = nullptr;
     }
   }
