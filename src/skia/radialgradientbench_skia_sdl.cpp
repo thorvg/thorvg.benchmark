@@ -1,3 +1,5 @@
+#include <SDL3/SDL_main.h>
+
 /**
  * Radial Gradient Bench: Skia SDL Benchmark
  *

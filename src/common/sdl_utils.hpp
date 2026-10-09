@@ -1,8 +1,8 @@
 #pragma once
 
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #ifdef __APPLE__
-#include <SDL2/SDL_metal.h>
+#include <SDL3/SDL_metal.h>
 #endif
 #include <cstdint>
 #include <iostream>
@@ -17,35 +17,28 @@ struct WindowDimensions {
   float scale_y;
 };
 
-/// Helper to get drawable size based on context
-inline void get_drawable_size(SDL_Window *window, SDL_Renderer *renderer,
-                               bool use_gl_drawable, int *w, int *h) {
-  if (use_gl_drawable) {
-    SDL_GL_GetDrawableSize(window, w, h);
-    return;
-  }
-
-#ifdef __APPLE__
-  // On macOS, SDL_GetRendererOutputSize doesn't always report HiDPI correctly.
-  // Use SDL_Metal_GetDrawableSize which works reliably for Metal-backed windows.
-  SDL_Metal_GetDrawableSize(window, w, h);
-  // If Metal returns 0 (not a Metal window), fall back to renderer
-  if (*w > 0 && *h > 0) {
-    return;
-  }
-#endif
-
-  if (renderer) {
-    SDL_GetRendererOutputSize(renderer, w, h);
-  } else {
-    // Fallback: try to get renderer from window
-    SDL_Renderer *win_renderer = SDL_GetRenderer(window);
-    if (win_renderer) {
-      SDL_GetRendererOutputSize(win_renderer, w, h);
-    } else {
-      // Last resort: use window size (no HiDPI detection possible)
-      SDL_GetWindowSize(window, w, h);
+// SDL3 windows are visible by default, but terminal launches on macOS need
+// an explicit raise to activate the application and bring the window forward.
+inline SDL_Window *create_centered_window(const char *title, int width,
+                                         int height, SDL_WindowFlags flags) {
+  SDL_Window *window = SDL_CreateWindow(title, width, height, flags);
+  if (window) {
+    SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+    if (!SDL_RaiseWindow(window)) {
+      std::cerr << "Warning: Unable to raise window: " << SDL_GetError() << "\n";
     }
+  }
+  return window;
+}
+
+/// Get physical pixel dimensions for OpenGL, Metal, or software windows.
+inline void get_drawable_size(SDL_Window *window, SDL_Renderer *renderer,
+                              bool /*use_gl_drawable*/, int *w, int *h) {
+  if (renderer && SDL_GetRenderOutputSize(renderer, w, h)) {
+    return;
+  }
+  if (!SDL_GetWindowSizeInPixels(window, w, h)) {
+    SDL_GetWindowSize(window, w, h);
   }
 }
 
@@ -58,7 +51,7 @@ inline void get_drawable_size(SDL_Window *window, SDL_Renderer *renderer,
 /// @param window The SDL window to adjust
 /// @param target_w Target drawable width in pixels
 /// @param target_h Target drawable height in pixels
-/// @param use_gl_drawable If true, use SDL_GL_GetDrawableSize (for OpenGL windows)
+/// @param use_gl_drawable If true, use SDL_GetWindowSizeInPixels (for OpenGL windows)
 /// @param renderer Optional SDL_Renderer for CPU backends (pass nullptr for GL)
 /// @return The final drawable dimensions and scale factors
 inline WindowDimensions adjust_window_for_hidpi(SDL_Window *window,
@@ -94,6 +87,11 @@ inline WindowDimensions adjust_window_for_hidpi(SDL_Window *window,
               << " to achieve " << target_w << "x" << target_h << " drawable\n";
 
     SDL_SetWindowSize(window, new_window_w, new_window_h);
+
+    // Wait for asynchronous resize requests before querying pixel dimensions.
+    if (!SDL_SyncWindow(window)) {
+      std::cerr << "Warning: Unable to synchronize window resize: " << SDL_GetError() << "\n";
+    }
 
     // Verify the new drawable size
     get_drawable_size(window, renderer, use_gl_drawable, &drawable_w, &drawable_h);

@@ -1,3 +1,5 @@
+#include <SDL3/SDL_main.h>
+
 /**
  * Multi-image benchmark: Skia SDL benchmark
  *

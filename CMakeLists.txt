@@ -35,29 +35,29 @@ else()
     message(FATAL_ERROR
         "Skia not found.\n"
         "Install it with:\n"
-        "  ~/vcpkg/vcpkg install skia sdl2 --triplet arm64-osx\n"
+        "  ~/vcpkg/vcpkg install skia sdl3 --triplet arm64-osx\n"
         "Then configure CMake with:\n"
         "  -DCMAKE_TOOLCHAIN_FILE=~/vcpkg/scripts/buildsystems/vcpkg.cmake"
     )
 endif()
 
 # -----------------------------------------------------------------------------
-# SDL2
+# SDL3
 # -----------------------------------------------------------------------------
 
-pkg_check_modules(SDL2 QUIET IMPORTED_TARGET sdl2)
+pkg_check_modules(SDL3 QUIET IMPORTED_TARGET sdl3)
 
-if(SDL2_FOUND)
-    set(SDL2_LIBS PkgConfig::SDL2)
+if(SDL3_FOUND)
+    set(SDL3_LIBS PkgConfig::SDL3)
 else()
-    find_package(SDL2 CONFIG REQUIRED)
+    find_package(SDL3 CONFIG REQUIRED)
 
-    if(TARGET SDL2::SDL2)
-        set(SDL2_LIBS SDL2::SDL2)
-    elseif(TARGET SDL2::SDL2-static)
-        set(SDL2_LIBS SDL2::SDL2-static)
+    if(TARGET SDL3::SDL3)
+        set(SDL3_LIBS SDL3::SDL3)
+    elseif(TARGET SDL3::SDL3-static)
+        set(SDL3_LIBS SDL3::SDL3-static)
     else()
-        message(FATAL_ERROR "SDL2 target not found.")
+        message(FATAL_ERROR "SDL3 target not found.")
     endif()
 endif()
 
@@ -201,7 +201,7 @@ function(add_skia_benchmark NAME SOURCE)
         PRIVATE
             rectbench_common
             ${SKIA_LIBS}
-            ${SDL2_LIBS}
+            ${SDL3_LIBS}
             ${SKIA_FRAMEWORKS}
             OpenGL::GL
     )
@@ -216,7 +216,7 @@ function(add_thorvg_benchmark NAME SOURCE)
         PRIVATE
             rectbench_common
             ${THORVG_TARGET}
-            ${SDL2_LIBS}
+            ${SDL3_LIBS}
             ${WGPU_LIBS}
             ${THORVG_FRAMEWORKS}
     )
@@ -260,7 +260,7 @@ add_thorvg_benchmark(strokerectbench_thorvg_sdl     src/thorvg/strokerectbench_t
 message(STATUS "")
 message(STATUS "========== Rectbench Configuration ==========")
 message(STATUS "Skia        : ${SKIA_LIBS}")
-message(STATUS "SDL2        : ${SDL2_LIBS}")
+message(STATUS "SDL3        : ${SDL3_LIBS}")
 message(STATUS "WebGPU      : pkg-config (wgpu_native)")
 
 if(RECTBENCH_BUILD_THORVG)
