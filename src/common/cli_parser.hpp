@@ -33,7 +33,6 @@ struct CliOptions {
   uint32_t width = 2560;             // Window/render width
   uint32_t height = 1440;            // Window/render height
   bool vsync = false;
-  bool gpu_sync = false;             // Both GL adapters: glFinish before stopping timer
   float opacity = 1.0f;              // Strokebench only: [0, 1]
   std::string output_path;           // Empty means auto-generate
   bool wgpu_external_device = false; // WebGPU: use external device
@@ -113,8 +112,6 @@ inline void print_usage(const char *program_name) {
             << "  --width=INT               Window/render width (default: 2560)\n"
             << "  --height=INT              Window/render height (default: 1440)\n"
             << "  --vsync=0|1               VSync (default: 0)\n"
-            << "  --gpu_sync=0|1            GL only: glFinish for accurate GPU "
-               "timing (default: 0)\n"
             << "  --opacity=FLOAT            Strokebench only: stroke opacity [0, 1] "
                "(default: 1)\n"
             << "  --output=PATH             Output JSON path (default: "
@@ -188,8 +185,6 @@ inline CliOptions parse_cli(int argc, char *argv[]) {
       opts.height = u32_val;
     } else if (parse_key_value(arg, "--vsync", bool_val)) {
       opts.vsync = bool_val;
-    } else if (parse_key_value(arg, "--gpu_sync", bool_val)) {
-      opts.gpu_sync = bool_val;
     } else if (parse_key_value(arg, "--opacity", str_val)) {
       char *end = nullptr;
       const float value = std::strtof(str_val.c_str(), &end);

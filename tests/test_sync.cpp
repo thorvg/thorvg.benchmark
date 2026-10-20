@@ -93,12 +93,11 @@ struct SkiaGlFixture
     SDL_Window target;
     bench::skiaexam::GlWindow window;
 
-    explicit SkiaGlFixture(bool gpu_sync) :
-        window(&example, 320, 180, false, gpu_sync)
+    SkiaGlFixture()
     {
+        window.example = &example;
         window.window = &target;
         window.surface = std::make_shared<SkSurface>();
-        CHECK(window.gpu_sync == gpu_sync);
     }
 };
 
@@ -109,12 +108,11 @@ struct ThorvgGlFixture
     SDL_Window target;
     bench::tvgexam::GlWindow window;
 
-    explicit ThorvgGlFixture(bool gpu_sync) :
-        window(&example, 320, 180, 4, false, gpu_sync)
+    ThorvgGlFixture()
     {
+        window.example = &example;
         window.canvas = &canvas;
         window.window = &target;
-        CHECK(window.gpu_sync == gpu_sync);
     }
 };
 
@@ -142,13 +140,11 @@ struct CaptureOutput
 };
 
 std::vector<std::string> run_timed_adapter(bench::BenchmarkWindow& window,
-                                           bool gpu_sync,
                                            const std::filesystem::path& output)
 {
     bench::CliOptions options;
     options.warmup = 1;
     options.frames = 2;
-    options.gpu_sync = gpu_sync;
     options.output_path = output.string();
     reset_calls();
     FakeClock::now_calls = 0;
@@ -158,21 +154,19 @@ std::vector<std::string> run_timed_adapter(bench::BenchmarkWindow& window,
     }
 
     std::vector<std::string> expected = {"content", "draw", "submit"};
-    if (gpu_sync) expected.push_back("wait");
     for (int frame = 0; frame < 3; ++frame) {
         expected.insert(expected.end(), {"timer_start", "update", "draw", "submit"});
-        if (gpu_sync) expected.push_back("wait");
         expected.insert(expected.end(), {"present", "timer_stop"});
     }
     CHECK(normalized_calls() == expected);
     CHECK(FakeClock::now_calls == 6);
-    CHECK(adapter_test::elapsed.count() == (gpu_sync ? 54 : 14));
+    CHECK(adapter_test::elapsed.count() == 14);
 
     std::ifstream file(output);
     CHECK(file.is_open());
     const std::string json{std::istreambuf_iterator<char>(file),
                            std::istreambuf_iterator<char>()};
-    const double expected_ms = gpu_sync ? 14.0 : 4.0;
+    const double expected_ms = 4.0;
     CHECK_NEAR(json_number(json, "avg_ms"), expected_ms, 0.000001);
     CHECK_NEAR(json_number(json, "min_ms"), expected_ms, 0.000001);
     CHECK_NEAR(json_number(json, "max_ms"), expected_ms, 0.000001);
@@ -181,97 +175,85 @@ std::vector<std::string> run_timed_adapter(bench::BenchmarkWindow& window,
     return normalized_calls();
 }
 
-void test_gl_wait_inside_runner()
+void test_gl_timing_inside_runner()
 {
     TemporaryDirectory directory;
     CHECK(!directory.path.empty());
     if (directory.path.empty()) return;
-    for (bool gpu_sync : {false, true}) {
-        const std::string suffix = gpu_sync ? "wait.json" : "submit.json";
-        SkiaGlFixture skia(gpu_sync);
-        const auto skia_trace = run_timed_adapter(skia.window, gpu_sync,
-                                                  directory.path / ("skia-" + suffix));
-        CHECK(skia.example.updated_frames == std::vector<uint32_t>({0, 1, 2}));
+    SkiaGlFixture skia;
+    const auto skia_trace = run_timed_adapter(skia.window, directory.path / "skia.json");
+    CHECK(skia.example.updated_frames == std::vector<uint32_t>({0, 1, 2}));
 
-        ThorvgGlFixture thorvg(gpu_sync);
-        const auto thorvg_trace = run_timed_adapter(thorvg.window, gpu_sync,
-                                                    directory.path / ("thorvg-" + suffix));
-        CHECK(thorvg.example.updated_frames == std::vector<uint32_t>({0, 1, 2}));
-        CHECK(thorvg.canvas.clear_values == std::vector<bool>({false, true, true, true}));
-        CHECK(thorvg.window.clearBuffer);
-        CHECK(skia_trace == thorvg_trace);
-    }
+    ThorvgGlFixture thorvg;
+    const auto thorvg_trace = run_timed_adapter(thorvg.window, directory.path / "thorvg.json");
+    CHECK(thorvg.example.updated_frames == std::vector<uint32_t>({0, 1, 2}));
+    CHECK(thorvg.canvas.clear_values == std::vector<bool>({false, true, true, true}));
+    CHECK(thorvg.window.clearBuffer);
+    CHECK(skia_trace == thorvg_trace);
 }
 
 void test_gl_policy_parity()
 {
-    for (bool gpu_sync : {false, true}) {
-        SkiaGlFixture skia(gpu_sync);
-        ThorvgGlFixture thorvg(gpu_sync);
-        std::vector<std::string> initial = {"content", "draw", "submit"};
-        std::vector<std::string> frame = {"update", "draw", "submit"};
-        if (gpu_sync) {
-            initial.push_back("wait");
-            frame.push_back("wait");
-        }
-        frame.push_back("present");
+    SkiaGlFixture skia;
+    ThorvgGlFixture thorvg;
+    std::vector<std::string> initial = {"content", "draw", "submit"};
+    std::vector<std::string> frame = {"update", "draw", "submit", "present"};
 
-        reset_calls();
-        CHECK(skia.window.ready());
-        CHECK(normalized_calls() == initial);
-        CHECK(skia.example.last_canvas == skia.window.surface->getCanvas());
-        CHECK(skia.example.last_width == 320 && skia.example.last_height == 180);
-        CHECK(adapter_test::viewport == std::vector<int>({0, 0, 320, 180}));
-        const auto skia_initial = normalized_calls();
+    reset_calls();
+    CHECK(skia.window.ready());
+    CHECK(normalized_calls() == initial);
+    CHECK(skia.example.last_canvas == skia.window.surface->getCanvas());
+    CHECK(skia.example.last_width == 320 && skia.example.last_height == 180);
+    CHECK(adapter_test::viewport == std::vector<int>({0, 0, 320, 180}));
+    const auto skia_initial = normalized_calls();
 
-        reset_calls();
-        CHECK(thorvg.window.ready());
-        CHECK(normalized_calls() == initial);
-        CHECK(normalized_calls() == skia_initial);
-        CHECK(thorvg.example.last_canvas == &thorvg.canvas);
-        CHECK(thorvg.example.last_width == 320 && thorvg.example.last_height == 180);
-        CHECK(thorvg.canvas.clear_values == std::vector<bool>({false}));
-        CHECK(thorvg.window.clearBuffer);
+    reset_calls();
+    CHECK(thorvg.window.ready());
+    CHECK(normalized_calls() == initial);
+    CHECK(normalized_calls() == skia_initial);
+    CHECK(thorvg.example.last_canvas == &thorvg.canvas);
+    CHECK(thorvg.example.last_width == 320 && thorvg.example.last_height == 180);
+    CHECK(thorvg.canvas.clear_values == std::vector<bool>({false}));
+    CHECK(thorvg.window.clearBuffer);
 
-        reset_calls();
-        CHECK(skia.window.update(41));
-        CHECK(skia.window.draw());
-        skia.window.refresh();
-        CHECK(normalized_calls() == frame);
-        CHECK(skia.example.elapsed == 41 && skia.example.last_frame == 41);
-        CHECK(adapter_test::calls.size() >= 3);
-        if (adapter_test::calls.size() >= 3) {
-            CHECK(adapter_test::calls[1] == "viewport");
-            CHECK(adapter_test::calls[2] == "back_buffer");
-        }
-        const auto skia_frame = normalized_calls();
-
-        reset_calls();
-        CHECK(thorvg.window.update(41));
-        CHECK(thorvg.window.draw());
-        thorvg.window.refresh();
-        CHECK(normalized_calls() == frame);
-        CHECK(normalized_calls() == skia_frame);
-        CHECK(thorvg.example.elapsed == 41 && thorvg.example.last_frame == 41);
-        CHECK(thorvg.canvas.clear_values == std::vector<bool>({false, true}));
-
-        thorvg.window.clearBuffer = false;
-        CHECK(thorvg.window.draw());
-        CHECK(!thorvg.canvas.clear_values.empty() && !thorvg.canvas.clear_values.back());
-        CHECK(!thorvg.window.clearBuffer);
-
-        skia.window.window = nullptr;
-        thorvg.window.window = nullptr;
-        reset_calls();
-        skia.window.refresh();
-        thorvg.window.refresh();
-        CHECK(adapter_test::calls.empty());
+    reset_calls();
+    CHECK(skia.window.update(41));
+    CHECK(skia.window.draw());
+    skia.window.refresh();
+    CHECK(normalized_calls() == frame);
+    CHECK(skia.example.elapsed == 41 && skia.example.last_frame == 41);
+    CHECK(adapter_test::calls.size() >= 3);
+    if (adapter_test::calls.size() >= 3) {
+        CHECK(adapter_test::calls[1] == "viewport");
+        CHECK(adapter_test::calls[2] == "back_buffer");
     }
+    const auto skia_frame = normalized_calls();
+
+    reset_calls();
+    CHECK(thorvg.window.update(41));
+    CHECK(thorvg.window.draw());
+    thorvg.window.refresh();
+    CHECK(normalized_calls() == frame);
+    CHECK(normalized_calls() == skia_frame);
+    CHECK(thorvg.example.elapsed == 41 && thorvg.example.last_frame == 41);
+    CHECK(thorvg.canvas.clear_values == std::vector<bool>({false, true}));
+
+    thorvg.window.clearBuffer = false;
+    CHECK(thorvg.window.draw());
+    CHECK(!thorvg.canvas.clear_values.empty() && !thorvg.canvas.clear_values.back());
+    CHECK(!thorvg.window.clearBuffer);
+
+    skia.window.window = nullptr;
+    thorvg.window.window = nullptr;
+    reset_calls();
+    skia.window.refresh();
+    thorvg.window.refresh();
+    CHECK(adapter_test::calls.empty());
 }
 
 void test_skia_failures()
 {
-    SkiaGlFixture fixture(true);
+    SkiaGlFixture fixture;
     auto& window = fixture.window;
     auto& example = fixture.example;
 
@@ -321,7 +303,7 @@ void test_skia_failures()
 
 void test_thorvg_failures()
 {
-    ThorvgGlFixture fixture(true);
+    ThorvgGlFixture fixture;
     auto& window = fixture.window;
     auto& canvas = fixture.canvas;
     auto& example = fixture.example;
@@ -440,7 +422,7 @@ void test_cpu_and_webgpu()
 
 int main()
 {
-    test_gl_wait_inside_runner();
+    test_gl_timing_inside_runner();
     test_gl_policy_parity();
     test_skia_failures();
     test_thorvg_failures();

@@ -24,14 +24,13 @@ struct Window
     std::unique_ptr<Example> example;
     bench::Backend backend;
     uint32_t width, height, threads;
-    bool vsync, gpu_sync, external_device;
+    bool vsync, external_device;
 
     Window(Example* example, bench::Backend backend, uint32_t width,
            uint32_t height, uint32_t threads = 0, bool vsync = false,
-           bool gpu_sync = false, bool external_device = false) :
+           bool external_device = false) :
         example(example), backend(backend), width(width), height(height),
-        threads(threads), vsync(vsync), gpu_sync(gpu_sync),
-        external_device(external_device) {}
+        threads(threads), vsync(vsync), external_device(external_device) {}
     virtual ~Window() = default;
 };
 
@@ -65,8 +64,8 @@ struct SwWindow : Window
 struct GlWindow : Window
 {
     GlWindow(Example* example, uint32_t width, uint32_t height,
-             bool vsync, bool gpu_sync, const std::string& = "Benchmark") :
-        Window(example, Backend::GL, width, height, 0, vsync, gpu_sync) {}
+             bool vsync, const std::string& = "Benchmark") :
+        Window(example, Backend::GL, width, height, 0, vsync) {}
 };
 }  // namespace bench::skiaexam
 
@@ -84,16 +83,16 @@ struct SwWindow : Window
 struct GlWindow : Window
 {
     GlWindow(Example* example, uint32_t width, uint32_t height,
-             uint32_t threads, bool vsync, bool gpu_sync,
+             uint32_t threads, bool vsync,
              const std::string& = "Benchmark") :
-        Window(example, Backend::GL, width, height, threads, vsync, gpu_sync) {}
+        Window(example, Backend::GL, width, height, threads, vsync) {}
 };
 struct WgWindow : Window
 {
     WgWindow(Example* example, uint32_t width, uint32_t height,
              uint32_t threads, bool external_device,
              const std::string& = "Benchmark") :
-        Window(example, Backend::WebGPU, width, height, threads, false, false,
+        Window(example, Backend::WebGPU, width, height, threads, false,
                external_device) {}
 };
 }  // namespace bench::tvgexam
@@ -123,15 +122,11 @@ void test_factory(const factory_test::Factory& factory)
         opts.backend = bench::Backend::GL;
         for (bool vsync : {false, true}) {
             opts.vsync = vsync;
-            for (bool gpu_sync : {false, true}) {
-                opts.gpu_sync = gpu_sync;
-                const auto window = factory.make(opts);
-                CHECK(window != nullptr);
-                if (!window) continue;
-                check_common(*window, opts, factory.thorvg);
-                CHECK(window->vsync == vsync);
-                CHECK(window->gpu_sync == gpu_sync);
-            }
+            const auto window = factory.make(opts);
+            CHECK(window != nullptr);
+            if (!window) continue;
+            check_common(*window, opts, factory.thorvg);
+            CHECK(window->vsync == vsync);
         }
         opts.backend = bench::Backend::CPU;
         const auto cpu = factory.make(opts);

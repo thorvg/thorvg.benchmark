@@ -9,8 +9,6 @@
 #include <thorvg.h>
 
 #include <SDL3/SDL.h>
-#define GL_SILENCE_DEPRECATION
-#include <SDL3/SDL_opengl.h>
 #ifdef __APPLE__
 #include <SDL3/SDL_metal.h>
 #endif
@@ -286,13 +284,11 @@ struct SwWindow final : Window {
 
 struct GlWindow final : Window {
   SDL_GLContext context = nullptr;
-  bool gpu_sync = false;
 
   GlWindow(Example* example, uint32_t target_width, uint32_t target_height,
-           uint32_t threads_cnt, bool vsync, bool gpu_sync,
+           uint32_t threads_cnt, bool vsync,
            const std::string& window_title = "Benchmark") :
-      Window(example, target_width, target_height, threads_cnt, window_title),
-      gpu_sync(gpu_sync)
+      Window(example, target_width, target_height, threads_cnt, window_title)
   {
       if (!initialized) {
           return;
@@ -349,17 +345,6 @@ struct GlWindow final : Window {
       SDL_GL_DestroyContext(context);
       context = nullptr;
     }
-  }
-
-  bool draw() override
-  {
-      if (!Window::draw()) {
-          return false;
-      }
-      if (gpu_sync) {
-          glFinish();
-      }
-      return true;
   }
 
   void refresh() override {

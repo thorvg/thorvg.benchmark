@@ -160,7 +160,7 @@ make_window_with_example(const bench::CliOptions &opts) {
         example.release(), opts.width, opts.height, "Circlebench");
   case bench::Backend::GL:
     return std::make_unique<bench::skiaexam::GlWindow>(
-        example.release(), opts.width, opts.height, opts.vsync, opts.gpu_sync,
+        example.release(), opts.width, opts.height, opts.vsync,
         "Circlebench");
   case bench::Backend::WebGPU:
     std::cerr << "Error: Skia WebGPU backend not implemented\n";

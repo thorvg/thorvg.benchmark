@@ -100,14 +100,11 @@ def crap_report(output):
             measured = [hit for line, hit in hits.items()
                         if function.start_line <= line <= function.end_line]
             fraction = sum(measured) / len(measured) if measured else None
-            initializer_only = function.name.endswith("::GlWindow::GlWindow") and bool(measured)
-            if initializer_only:
-                fraction = None  # Setup bodies are deliberately not compiled by the harness.
             cc = function.cyclomatic_complexity
             functions.append({"file": name, "function": function.long_name,
                               "line": function.start_line, "cc": cc,
                               "covered": sum(measured), "lines": len(measured),
-                              "scope": "constructor initializer only" if initializer_only else "function",
+                              "scope": "function",
                               "coverage": fraction,
                               "crap": cc * cc * (1 - fraction) ** 3 + cc
                               if fraction is not None else None})
@@ -122,7 +119,7 @@ def crap_report(output):
                          "percent": 100 * sum(hits) / len(hits)}
     report = {"formula": "CC^2 * (1 - line_coverage)^3 + CC", "threshold": 30,
               "tools": {name: version(name) for name in ("lizard", "coverage", "gcovr")},
-              "scope": "Shared logic, actual adapter/factory bodies and GL constructor initializers against fake APIs, and Python tools. Constructor setup bodies, hardware/engine internals, and uninstrumented functions have null scores.",
+              "scope": "Shared logic, actual adapter/factory bodies against fake APIs, and Python tools. Graphics setup, hardware/engine internals, and uninstrumented functions have null scores.",
               "coverage": totals, "functions": functions}
     (output / "crap.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     text = ["# Test quality report", "", "CRAP = CC² × (1 − line coverage)³ + CC.",
@@ -131,7 +128,7 @@ def crap_report(output):
         text.append(f"- {label}: {data['covered']}/{data['lines']} lines ({data['percent']:.1f}%).")
     measured = [f for f in functions if f["crap"] is not None]
     text += [f"- Scored functions: {len(measured)}; unscored: {len(functions) - len(measured)}.",
-             "- GL constructor initializers are tested; their graphics setup bodies are excluded from CRAP.",
+             "- Graphics setup bodies are excluded from CRAP.",
              "", "| Function | CC | Line coverage | CRAP |", "|---|---:|---:|---:|"]
     for f in sorted(measured, key=lambda f: f["crap"], reverse=True):
         text.append(f"| {f['file']}:{f['line']} {f['function'].replace('|', '&#124;')} | "

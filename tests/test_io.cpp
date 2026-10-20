@@ -79,14 +79,13 @@ void test_cli_defaults_and_options()
     CHECK(defaults.width == 2560);
     CHECK(defaults.height == 1440);
     CHECK(!defaults.vsync);
-    CHECK(!defaults.gpu_sync);
     CHECK(!defaults.wgpu_external_device);
     CHECK_NEAR(defaults.opacity, 1.0f, 0.000001f);
     CHECK(defaults.output_path.empty());
 
     const auto options = parse({"--backend=webgpu", "--scene=rotation", "--image=jpg",
                                 "--seed=9876543210123", "--frames=23", "--warmup=7", "--threads=2",
-                                "--width=320", "--height=180", "--vsync=1", "--gpu_sync=1",
+                                "--width=320", "--height=180", "--vsync=1",
                                 "--opacity=0.375", "--output=results dir/run=2.json",
                                 "--wgpu_external_device=1"});
     CHECK(options.valid);
@@ -101,7 +100,6 @@ void test_cli_defaults_and_options()
     CHECK(options.width == 320);
     CHECK(options.height == 180);
     CHECK(options.vsync);
-    CHECK(options.gpu_sync);
     CHECK(options.wgpu_external_device);
     CHECK_NEAR(options.opacity, 0.375f, 0.000001f);
     CHECK(options.output_path == "results dir/run=2.json");
@@ -109,12 +107,11 @@ void test_cli_defaults_and_options()
     CHECK(parse({"--backend=cpu"}).backend == bench::Backend::CPU);
     CHECK(parse({"--backend=gl"}).backend == bench::Backend::GL);
     const auto explicit_defaults = parse({"--scene=default", "--image=png",
-                                          "--vsync=0", "--gpu_sync=0", "--wgpu_external_device=0"});
+                                          "--vsync=0", "--wgpu_external_device=0"});
     CHECK(explicit_defaults.valid);
     CHECK(explicit_defaults.scene_mode == bench::SceneMode::Default);
     CHECK(explicit_defaults.image_ext == "png");
     CHECK(!explicit_defaults.vsync);
-    CHECK(!explicit_defaults.gpu_sync);
     CHECK(!explicit_defaults.wgpu_external_device);
 
     CHECK(std::string(bench::backend_name(bench::Backend::CPU)) == "cpu");

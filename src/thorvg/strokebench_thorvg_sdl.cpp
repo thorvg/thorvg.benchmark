@@ -130,7 +130,7 @@ make_window_with_example(const bench::CliOptions &opts) {
   case bench::Backend::GL:
       return std::make_unique<bench::tvgexam::GlWindow>(
           example.release(), opts.width, opts.height, opts.threads, opts.vsync,
-          opts.gpu_sync, "Strokebench");
+          "Strokebench");
   case bench::Backend::WebGPU:
     return std::make_unique<bench::tvgexam::WgWindow>(
         example.release(), opts.width, opts.height, opts.threads,
