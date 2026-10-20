@@ -12,6 +12,9 @@
 #define GL_SILENCE_DEPRECATION
 #ifdef __APPLE__
 #include <OpenGL/gl3.h>
+#elif defined(_WIN32)
+#include <GL/glew.h>
+#include <SDL3/SDL_opengl.h>
 #else
 #ifndef GL_GLEXT_PROTOTYPES
 #define GL_GLEXT_PROTOTYPES 1
@@ -144,6 +147,15 @@ public:
       std::cerr << "SDL_GL_MakeCurrent failed: " << SDL_GetError() << "\n";
       return;
     }
+#ifdef _WIN32
+    glewExperimental = GL_TRUE;
+    const GLenum glew_status = glewInit();
+    if (glew_status != GLEW_OK) {
+      std::cerr << "glewInit failed: " << glewGetErrorString(glew_status) << "\n";
+      return;
+    }
+    glGetError();
+#endif
 
     const int requested_swap_interval = opts_.vsync ? 1 : 0;
     if (!SDL_GL_SetSwapInterval(requested_swap_interval)) {

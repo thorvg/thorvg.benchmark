@@ -81,7 +81,7 @@ jobs:
       - name: Fetch wgpu-native
         run: |
           set -e
-          WGPU_VERSION=27.0.2.0
+          WGPU_VERSION=29.0.1.1
           WGPU_URL="https://github.com/gfx-rs/wgpu-native/releases/download/v${WGPU_VERSION}/wgpu-linux-x86_64-release.zip"
           WGPU_ROOT="${GITHUB_WORKSPACE}/third_party/wgpu-native"
           mkdir -p "$WGPU_ROOT"

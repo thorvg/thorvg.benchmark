@@ -20,6 +20,7 @@ from unittest import mock
 
 
 TOOLS = Path(__file__).resolve().parents[1] / "tools"
+EXE_SUFFIX = ".exe" if sys.platform == "win32" else ""
 
 
 def load_tool(name):
@@ -62,12 +63,15 @@ def variant(bench, scene, engine, backend, fps, avg_ms=1.0):
 def result_for_command(command, frame_ms=1.0):
     arguments = dict(argument[2:].split("=", 1) for argument in command[1:])
     engine = "skia" if "skia" in Path(command[0]).name else "thorvg"
+    backend = arguments["backend"]
+    gpu = backend != "cpu"
+    gpu_sync = arguments.get("gpu_sync", "1" if backend == "webgpu" else "0") == "1"
     frames = int(arguments["frames"])
     resolution = f"{arguments['width']}x{arguments['height']}"
     return {
         "schema_version": 2,
         "status": "passed",
-        "comparable": True,
+        "comparable": not gpu or gpu_sync,
         "frame_times_ms": [frame_ms] * frames,
         "stats": {
             **dict.fromkeys(("avg_ms", "median_ms", "p95_ms", "p99_ms", "min_ms", "max_ms"), frame_ms),
@@ -78,9 +82,14 @@ def result_for_command(command, frame_ms=1.0):
             "benchmark": "rect", "engine": engine,
             "engine_version": "test", "engine_revision": "test",
             "scene_model": "immediate" if engine == "skia" else "retained",
-            "backend": arguments["backend"], "graphics_api": "CPU",
-            "gpu_device": "none", "gpu_vendor": "none", "gpu_driver": "none",
-            "gpu_completion": "none", "timing_mode": "onscreen_cpu_complete",
+            "backend": backend, "graphics_api": {"cpu": "CPU", "gl": "OpenGL", "webgpu": "WebGPU"}[backend],
+            "gpu_device": "Test GPU" if gpu else "none",
+            "gpu_vendor": "Test vendor" if gpu else "none",
+            "gpu_driver": "Test driver" if gpu else "none",
+            "gpu_completion": ("queue.onSubmittedWorkDone" if backend == "webgpu" else "glFinish")
+                              if gpu and gpu_sync else "none",
+            "timing_mode": "onscreen_cpu_complete" if not gpu else
+                           "onscreen_gpu_complete" if gpu_sync else "diagnostic_submit",
             "seed": int(arguments["seed"]), "object_count": 5000,
             "resolution": resolution, "requested_resolution": resolution,
             "pixel_format": "RGBA8888", "vsync_requested": False,
@@ -126,7 +135,7 @@ class RunAllTests(unittest.TestCase):
         self.bin_dir = self.root / "bin"
         self.bin_dir.mkdir()
         for name in ("rect_skia_sdl", "rect_tvg_sdl"):
-            (self.bin_dir / name).touch()
+            (self.bin_dir / (name + EXE_SUFFIX)).touch()
         self.output = self.root / "results"
         self.args = ["--bin-dir", str(self.bin_dir), "--output-dir", str(self.output),
                      "--benchmarks", "rect", "--engines", "thorvg", "--backends", "cpu",
@@ -145,7 +154,7 @@ class RunAllTests(unittest.TestCase):
         for v in variants:
             self.assertEqual(v.benchmark, "rect")
             self.assertTrue(Path(v.binary).is_absolute())
-            self.assertEqual(Path(v.binary).name, "rect_tvg_sdl" if v.engine == "thorvg" else "rect_skia_sdl")
+            self.assertEqual(Path(v.binary).name, ("rect_tvg_sdl" if v.engine == "thorvg" else "rect_skia_sdl") + EXE_SUFFIX)
             self.assertEqual(v.name, f"rect_{v.engine}_{v.backend}_{v.scene}")
         explicit = run_all.make_variants(
             manifest, self.bin_dir, ["rect"], ["skia", "thorvg"],
@@ -157,6 +166,69 @@ class RunAllTests(unittest.TestCase):
             "--engines", "SKIA,THORVG", "--backends", "ALL", "--scenes", "DEFAULT,ROTATION"])
         self.assertEqual(code, 0)
         self.assertEqual(stdout.count("[1/1]"), 10)
+
+    def test_windows_executable_discovery_preserves_explicit_suffix(self):
+        raw = json.loads(run_all.DEFAULT_MANIFEST.read_text(encoding="utf-8"))
+        raw["engines"]["skia"]["command"]["executable"] = "{workload}_skia_sdl.EXE"
+        manifest_path = self.root / "windows-engines.json"
+        manifest_path.write_text(json.dumps(raw), encoding="utf-8")
+        for name in ("rect_skia_sdl.EXE", "rect_tvg_sdl.exe"):
+            (self.bin_dir / name).touch()
+        commands = []
+
+        def run(cmd, **kwargs):
+            commands.append(cmd)
+            Path(next(a[9:] for a in cmd if a.startswith("--output="))).write_text(
+                json.dumps(result_for_command(cmd)), encoding="utf-8")
+            return subprocess.CompletedProcess(cmd, 0, "")
+
+        with mock.patch.object(run_all.sys, "platform", "win32"), \
+             mock.patch.object(run_all.subprocess, "run", side_effect=run):
+            code, _, _ = invoke(run_all, self.args + ["--manifest", str(manifest_path),
+                                                     "--engines", "skia,thorvg"])
+        self.assertEqual(code, 0)
+        self.assertEqual([Path(cmd[0]).name.lower() for cmd in commands],
+                         ["rect_skia_sdl.exe", "rect_tvg_sdl.exe"])
+
+    def test_mixed_backends_preserve_async_gl_and_sync_webgpu(self):
+        commands = []
+
+        def run(cmd, **kwargs):
+            commands.append(cmd)
+            self.assertFalse(any(a.startswith("--gpu_sync=") for a in cmd))
+            Path(next(a[9:] for a in cmd if a.startswith("--output="))).write_text(
+                json.dumps(result_for_command(cmd)), encoding="utf-8")
+            return subprocess.CompletedProcess(cmd, 0, "")
+
+        with mock.patch.object(run_all.subprocess, "run", side_effect=run):
+            code, _, _ = invoke(run_all, self.args + ["--engines", "skia,thorvg", "--backends", "all"])
+        self.assertEqual(code, 0)
+        self.assertEqual(len(commands), 5)
+        summary_path = self.output / "summary.json"
+        summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        self.assertEqual(summary["status"], "complete")
+        for item in summary["variants"]:
+            self.assertEqual(item["status"], "passed")
+            self.assertEqual(item["comparable"], item["backend"] != "gl")
+        _, report, _ = invoke(generate_report, [str(summary_path)])
+        self.assertEqual(report.count("diagnostic (not ranked)"), 2)
+        self.assertIn("## WebGPU", report)
+
+    def test_gpu_sync_option_is_only_forwarded_to_rust_adapters(self):
+        for engine, default in (("pathfinder", "0"), ("vello", "1")):
+            for override in (None, "0", "1"):
+                extra = [] if override is None else ["--", f"--gpu_sync={override}"]
+                with self.subTest(engine=engine, override=override):
+                    code, stdout, _ = invoke(run_all, self.args + ["--engines", engine,
+                        "--backends", "all", "--dry-run", *extra])
+                    self.assertEqual(code, 0)
+                    self.assertEqual(stdout.count("--gpu_sync="), 1)
+                    self.assertIn(f"--gpu_sync={default if override is None else override}", stdout)
+        with mock.patch.object(run_all.subprocess, "run") as process:
+            with self.assertRaises(SystemExit) as error:
+                invoke(run_all, self.args + ["--build", "--", "--gpu_sync=1"])
+        self.assertEqual(error.exception.code, 2)
+        process.assert_not_called()
 
     def test_runs_share_inputs_and_write_summary_compatible_with_reports(self):
         frame_times = iter([1.0, 2.0, 6.0, 3.0])
@@ -185,7 +257,8 @@ class RunAllTests(unittest.TestCase):
         self.assertEqual(summary["seed_base"], 0)
         self.assertEqual(len(set(summary["seeds"])), 2)
         self.assertEqual([Path(c[0]).name for c in commands],
-                         ["rect_skia_sdl", "rect_tvg_sdl", "rect_tvg_sdl", "rect_skia_sdl"])
+                         [name + EXE_SUFFIX for name in
+                          ("rect_skia_sdl", "rect_tvg_sdl", "rect_tvg_sdl", "rect_skia_sdl")])
         self.assertEqual([c[3] for c in commands],
                          [f"--seed={seed}" for seed in summary["seeds"] for _ in range(2)])
         for cmd in commands:

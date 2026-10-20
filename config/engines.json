@@ -103,7 +103,7 @@
     "vello": {
       "workloads": ["rect", "circle", "stroke", "image", "lineargradient", "radialgradient", "strokerect"],
       "display_name": "Vello",
-      "engine_version": "0.10.0",
+      "engine_version": "0.11.0",
       "scene_model": "immediate",
       "command": {
         "executable": "vello-bench",

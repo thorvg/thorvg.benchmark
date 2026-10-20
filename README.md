@@ -19,7 +19,7 @@ Pathfinder, and Vello support the original seven workload IDs.
 | ThorVG | CPU, OpenGL, WebGPU | retained | installed package or latest `main` source build |
 | NanoVG | OpenGL 3.3 core | immediate | configured vcpkg package |
 | Pathfinder | OpenGL GL3/D3D9 | immediate | crates.io `0.5` packages |
-| Vello | WebGPU/wgpu | immediate | crates.io `0.10.0` package |
+| Vello | WebGPU/wgpu | immediate | crates.io `0.11.0` package |
 
 Skia and ThorVG support `rect`, `circle`, `stroke`, `image`, `multiimage`,
 `lineargradient`, `radialgradient`, and `strokerect`, each in `default` and
@@ -66,9 +66,9 @@ The ThorVG image adapter relies on ThorVG's fixed linear sampler because its pub
 ## Build
 
 Requirements are CMake 3.20+, Ninja, SDL3 for C++ adapters, and the SDK for
-the selected engine. Rust engines require Rust 1.88 or newer. Skia and NanoVG use vcpkg packages;
+the selected engine. Rust engines require Rust 1.89 or newer. Skia and NanoVG use vcpkg packages;
 Pathfinder and Vello use crates.io packages resolved by their adapter lockfiles.
-ThorVG and its WebGPU adapter require wgpu-native. By default ThorVG is loaded
+ThorVG and its WebGPU adapter require wgpu-native 29.0.1.1. By default ThorVG is loaded
 from the installed `thorvg-1` pkg-config package. Set
 `VGBENCH_BUILD_THORVG_FROM_SOURCE=ON` to fetch and build the latest ThorVG
 `main` branch instead. A normal CMake configure builds only the ThorVG

@@ -218,6 +218,10 @@ if(VGBENCH_ENABLE_NANOVG)
   target_link_libraries(vgbench_nanovg PUBLIC
     vgbench_common nanovg::nanovg ${VGBENCH_SDL_TARGET} OpenGL::GL
   )
+  if(WIN32)
+    find_package(GLEW REQUIRED)
+    target_link_libraries(vgbench_nanovg PUBLIC GLEW::GLEW)
+  endif()
   if(UNIX AND NOT APPLE)
     target_link_libraries(vgbench_nanovg PUBLIC m)
   endif()

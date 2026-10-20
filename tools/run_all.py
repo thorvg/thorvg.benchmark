@@ -482,6 +482,8 @@ def make_variants(
                         f"engines.{engine_id}.command.executable",
                     )
                     executable = Path(rendered_executable)
+                    if sys.platform == "win32" and not executable.suffix:
+                        executable = executable.with_suffix(".exe")
                     if not executable.is_absolute():
                         executable = bin_dir / executable
                     rendered_args = tuple(
@@ -579,7 +581,7 @@ def _int_arg(args: Sequence[str], key: str, default: int, *, positive: bool) -> 
 
 
 def requested_run(
-    manifest: CapabilityManifest, extra_args: Sequence[str], *, gpu: bool
+    manifest: CapabilityManifest, extra_args: Sequence[str], *, backend: str
 ) -> RequestedRun:
     raw_vsync = _kv_arg(extra_args, "vsync")
     raw_gpu_sync = _kv_arg(extra_args, "gpu_sync")
@@ -597,7 +599,8 @@ def requested_run(
         object_count=manifest.object_count,
         asset_hash=manifest.assets[image_extension],
         vsync=False if raw_vsync is None else _bool_value(raw_vsync, "--vsync"),
-        gpu_sync=(gpu if raw_gpu_sync is None else _bool_value(raw_gpu_sync, "--gpu_sync")),
+        gpu_sync=(backend == "webgpu" if raw_gpu_sync is None
+                  else _bool_value(raw_gpu_sync, "--gpu_sync")),
     )
 
 
@@ -636,6 +639,10 @@ def build_command(
     requested: RequestedRun,
     run_index: int,
 ) -> list[str]:
+    raw_gpu_sync = _kv_arg(extra_args, "gpu_sync")
+    supports_gpu_sync = variant.engine in {"pathfinder", "vello"}
+    if raw_gpu_sync is not None and not supports_gpu_sync:
+        raise ValueError(f"{variant.engine} does not support --gpu_sync")
     command = [
         variant.binary, *variant.command_args, f"--backend={variant.backend}",
         f"--scene={variant.scene}", f"--seed={seed}", f"--output={output_path}",
@@ -650,8 +657,8 @@ def build_command(
             command.append(f"--{key}={value}")
     if _kv_arg(extra_args, "vsync") is None:
         command.append("--vsync=0")
-    if variant.gpu and _kv_arg(extra_args, "gpu_sync") is None:
-        command.append("--gpu_sync=1")
+    if supports_gpu_sync and raw_gpu_sync is None:
+        command.append(f"--gpu_sync={int(requested.gpu_sync)}")
     capture_path = _kv_arg(extra_args, "capture")
     forwarded_args = [
         argument
@@ -1230,9 +1237,13 @@ def main(argv: list[str]) -> int:
         )
 
     try:
+        if _kv_arg(extra_args, "gpu_sync") is not None:
+            unsupported = [engine for engine in engines if engine not in {"pathfinder", "vello"}]
+            if unsupported:
+                raise ValueError("--gpu_sync is not supported by " + ", ".join(unsupported))
         requested_runs = {
-            gpu: requested_run(manifest, extra_args, gpu=gpu)
-            for gpu in (False, True)
+            backend: requested_run(manifest, extra_args, backend=backend)
+            for backend in manifest.known_backends
         }
     except ValueError as error:
         parser.error(str(error))
@@ -1292,7 +1303,7 @@ def main(argv: list[str]) -> int:
         output_log = (
             variant_dir / f"{variant.name}_seed{seed}_run{run_index + 1:02d}.log"
         )
-        requested = requested_runs[variant.gpu]
+        requested = requested_runs[variant.backend]
         command = build_command(
             variant,
             seed,

@@ -548,6 +548,21 @@ struct WgpuContext {
     surfaceDesc.nextInChain = (WGPUChainedStruct *)&metalDesc;
 
     surface = wgpuInstanceCreateSurface(instance, &surfaceDesc);
+#elif defined(_WIN32)
+    const auto properties = SDL_GetWindowProperties(window);
+    WGPUSurfaceSourceWindowsHWND windowsDesc = {};
+    windowsDesc.chain.sType = WGPUSType_SurfaceSourceWindowsHWND;
+    windowsDesc.hwnd = SDL_GetPointerProperty(
+        properties, SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr);
+    windowsDesc.hinstance = SDL_GetPointerProperty(
+        properties, SDL_PROP_WINDOW_WIN32_INSTANCE_POINTER, nullptr);
+    if (!windowsDesc.hwnd || !windowsDesc.hinstance) {
+      std::cerr << "Failed to get native Windows window handles\n";
+      return false;
+    }
+    WGPUSurfaceDescriptor surfaceDesc = {};
+    surfaceDesc.nextInChain = &windowsDesc.chain;
+    surface = wgpuInstanceCreateSurface(instance, &surfaceDesc);
 #else
     std::cerr << "WebGPU surface creation not implemented for this platform\n";
     return false;
@@ -746,7 +761,7 @@ struct WgpuContext {
 
     WGPUQueueWorkDoneCallbackInfo callback_info = {};
     callback_info.mode = WGPUCallbackMode_AllowProcessEvents;
-    callback_info.callback = [](WGPUQueueWorkDoneStatus status,
+    callback_info.callback = [](WGPUQueueWorkDoneStatus status, WGPUStringView,
                                 void *userdata, void *) {
       auto *state = static_cast<QueueDone *>(userdata);
       state->success = status == WGPUQueueWorkDoneStatus_Success;

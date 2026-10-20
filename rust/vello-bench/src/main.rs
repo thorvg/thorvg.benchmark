@@ -16,7 +16,7 @@ use vello::wgpu::rwh::{DisplayHandle, HandleError, HasDisplayHandle, RawDisplayH
 use vello::wgpu::util::TextureBlitter;
 use vello::{AaConfig, AaSupport, RenderParams, Renderer, RendererOptions, Scene};
 
-const VELLO_VERSION: &str = "0.10.0";
+const VELLO_VERSION: &str = "0.11.0";
 const SURFACE_STARTUP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 const SURFACE_STARTUP_RETRY_MS: u32 = 10;
 
@@ -131,6 +131,7 @@ impl VelloDriver {
             power_preference: wgpu::PowerPreference::HighPerformance,
             force_fallback_adapter: false,
             compatible_surface: Some(&surface),
+            apply_limit_buckets: false,
         }))
         .map_err(|error| format!("no compatible GPU adapter: {error}"))?;
 
@@ -155,6 +156,7 @@ impl VelloDriver {
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format,
+            color_space: wgpu::SurfaceColorSpace::Auto,
             width: actual_width,
             height: actual_height,
             present_mode,
@@ -202,7 +204,7 @@ impl VelloDriver {
         let runtime = RuntimeMetadata {
             engine: "vello".into(),
             engine_version: VELLO_VERSION.into(),
-            engine_revision: "crates.io:vello@0.10.0".into(),
+            engine_revision: "crates.io:vello@0.11.0".into(),
             scene_model: "immediate".into(),
             graphics_api,
             gpu_device: adapter_info.name,
@@ -434,7 +436,10 @@ impl VelloDriver {
             .recv()
             .map_err(|error| format!("capture mapping callback was lost: {error}"))?
             .map_err(|error| format!("capture buffer mapping failed: {error}"))?;
-        let mapped = buffer.slice(..).get_mapped_range();
+        let mapped = buffer
+            .slice(..)
+            .get_mapped_range()
+            .map_err(|error| format!("capture mapped range failed: {error}"))?;
         let mut rgba =
             Vec::with_capacity(unpadded_bytes_per_row as usize * self.config.height as usize);
         for row in mapped.chunks_exact(padded_bytes_per_row as usize) {
@@ -572,10 +577,11 @@ impl BenchmarkDriver for VelloDriver {
     }
 
     fn present(&mut self) -> Result<(), String> {
-        self.pending_frame
+        let frame = self
+            .pending_frame
             .take()
-            .ok_or_else(|| "present called without a rendered frame".to_string())?
-            .present();
+            .ok_or_else(|| "present called without a rendered frame".to_string())?;
+        self.queue.present(frame);
         Ok(())
     }
 

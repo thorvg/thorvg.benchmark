@@ -13,9 +13,7 @@ use pathfinder_content::pattern::{Image as PathfinderImage, Pattern};
 use pathfinder_geometry::vector::{Vector2I, vec2i};
 use pathfinder_gl::{GLDevice, GLVersion};
 use pathfinder_renderer::concurrent::executor::SequentialExecutor;
-use pathfinder_renderer::gpu::options::{
-    DestFramebuffer, RendererLevel, RendererMode, RendererOptions,
-};
+use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
 use pathfinder_renderer::gpu::renderer::Renderer;
 use pathfinder_renderer::options::BuildOptions;
 use pathfinder_renderer::scene::Scene;
@@ -38,7 +36,8 @@ fn main() {
 }
 
 fn main_result() -> Result<(), String> {
-    let opts = CliOptions::parse(Backend::Gl)?;
+    let mut opts = CliOptions::parse(Backend::Gl)?;
+    opts.gpu_sync = false;
     if opts.backend != Backend::Gl {
         return Err("Pathfinder supports only --backend=gl".into());
     }
@@ -137,13 +136,9 @@ impl PathfinderDriver {
         let renderer = Renderer::new(
             GLDevice::new(GLVersion::GL3, 0),
             &EmbeddedResourceLoader::new(),
-            RendererMode {
-                level: RendererLevel::D3D9,
-            },
+            framebuffer,
             RendererOptions {
-                dest: framebuffer,
                 background_color: Some(ColorF::black()),
-                show_debug_ui: false,
             },
         );
         let event_pump = sdl
@@ -154,10 +149,10 @@ impl PathfinderDriver {
         let runtime = RuntimeMetadata {
             engine: "pathfinder".into(),
             engine_version: PATHFINDER_VERSION.into(),
-            engine_revision: "unknown".into(),
+            engine_revision: "crates.io:pathfinder_renderer@0.5.0".into(),
             scene_model: "immediate".into(),
             graphics_api: format!(
-                "OpenGL {} (core {}.{}) / Pathfinder GL3 (D3D9 level)",
+                "OpenGL {} (core {}.{}) / Pathfinder GL3",
                 gl_version, gl_contract.major, gl_contract.minor,
             ),
             gpu_device: gl_string(gl::RENDERER),
@@ -424,11 +419,17 @@ impl BenchmarkDriver for PathfinderDriver {
     }
 
     fn render(&mut self) -> Result<(), String> {
-        self.scene.build_and_render(
-            &mut self.renderer,
+        let (sender, receiver) = std::sync::mpsc::channel();
+        self.renderer.begin_scene();
+        self.scene.build(
             BuildOptions::default(),
-            SequentialExecutor,
+            Box::new(move |command| drop(sender.send(command))),
+            &SequentialExecutor,
         );
+        for command in receiver {
+            self.renderer.render_command(&command);
+        }
+        self.renderer.end_scene();
         Ok(())
     }
 
@@ -496,9 +497,9 @@ fn pathfinder_transform(affine: [f64; 6]) -> Transform2F {
     Transform2F::row_major(
         affine[0] as f32,
         affine[2] as f32,
-        affine[4] as f32,
         affine[1] as f32,
         affine[3] as f32,
+        affine[4] as f32,
         affine[5] as f32,
     )
 }
