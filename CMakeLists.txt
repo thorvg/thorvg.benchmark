@@ -5,6 +5,20 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+include(CTest)
+option(RECTBENCH_BUILD_BENCHMARKS "Build the rendering benchmarks" ON)
+
+add_library(rectbench_common INTERFACE)
+target_include_directories(rectbench_common INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/src/common)
+
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()
+
+if(NOT RECTBENCH_BUILD_BENCHMARKS)
+    return()
+endif()
+
 include(ExternalProject)
 
 # =============================================================================
@@ -174,18 +188,6 @@ else()
     set(THORVG_FRAMEWORKS)
 
 endif()
-
-# =============================================================================
-# Common Library
-# =============================================================================
-
-add_library(rectbench_common INTERFACE)
-
-target_include_directories(
-    rectbench_common
-    INTERFACE
-        ${CMAKE_SOURCE_DIR}/src/common
-)
 
 # =============================================================================
 # Helper Functions

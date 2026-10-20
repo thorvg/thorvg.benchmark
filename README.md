@@ -11,6 +11,63 @@
 
 A benchmark comparing **Skia** and **ThorVG** rendering performance.
 
+## Tests
+
+The shared benchmark logic and Python tools can be tested without installing
+Skia, SDL, ThorVG, or WebGPU. A C++20 compiler, CMake, and Python 3.10+ are enough:
+
+```bash
+cmake -S . -B build-tests -DRECTBENCH_BUILD_BENCHMARKS=OFF -DBUILD_TESTING=ON
+cmake --build build-tests
+ctest --test-dir build-tests --output-on-failure
+```
+
+The suite checks statistics, seeded workloads, CLI validation, JSON output,
+suite orchestration, reporting, and fairness in the actual benchmark loop.
+A fake clock verifies warmup exclusion, exact frame budgets, and that update,
+draw/synchronization, and presentation stay inside the timed interval. Failed
+or interrupted runs must return an error without publishing partial results.
+
+Adapter and factory tests compile selected, unchanged production method bodies
+against recording API substitutes. They check both engines' submission/wait/
+presentation order and option forwarding in all 16 factories. Source-line
+mapping attributes coverage to those method bodies; it does not measure the
+substituted engine APIs, graphics initialization, or hardware behavior. GL
+constructor initializers are also executed to check synchronization flag binding;
+their graphics setup bodies are excluded from CRAP scores.
+Use `-DBUILD_TESTING=OFF` to omit tests from a rendering benchmark build.
+
+For coverage, CRAP scores, and a selected mutation sample, use GCC and its
+matching `gcov`, with the quality tools installed in your Python environment:
+
+```bash
+python -m pip install -r tests/requirements-quality.txt
+cmake -S . -B build-tests -DCMAKE_CXX_COMPILER=g++ -DCMAKE_BUILD_TYPE=Debug \
+  -DRECTBENCH_BUILD_BENCHMARKS=OFF -DBUILD_TESTING=ON -DRECTBENCH_TEST_COVERAGE=ON
+cmake --build build-tests
+python tests/quality.py --build-dir build-tests
+```
+
+Run this quality command instead of the separate CTest command: it runs the
+tests while collecting coverage. It writes reports to the ignored
+`build-test-quality/report/` directory. `--cmake` and `--gcov` accept alternate
+tool paths; `--coverage-only` and `--mutations-only` allow separate collection
+and mutation runs when investigating failures. `--mutation-prefix fairness-`
+selects the fairness faults without repeating unrelated mutation checks.
+
+CRAP combines cyclomatic complexity from Lizard with measured executable-line
+coverage: `CC² * (1 - coverage)³ + CC`. Scores above 30 are reported for follow-up.
+Functions without instrumentation have a null score;
+they are excluded from the reported coverage denominator.
+
+`tests/mutations.json` and `tests/fairness_mutations.json` define explicit
+behavior-changing faults. Each mutant
+runs against an isolated source copy after that copy passes its baseline tests.
+Survivors, compile errors, and timeouts fail the quality command; only failing
+tests or crashes kill a valid mutant. This selected sample is not exhaustive
+mutation coverage or proof of correctness. The `tests` GitHub workflow runs
+these checks on pushes and pull requests and uploads the reports.
+
 ## Quick Start (macOS)
 
 ### 1. Clone & Initialize
@@ -110,13 +167,20 @@ benchmark; its results are not directly comparable with those historical runs.
 | `--backend=cpu\|gl\|webgpu` | `cpu` | Rendering backend |
 | `--scene=default\|rotation` | `default` | Scene mode (rotation adds per-frame rotation) |
 | `--seed=INT` | `12345` | RNG seed for deterministic output |
-| `--frames=INT` | `1000` | Number of measured frames |
+| `--frames=INT` | `1000` | Number of measured frames (at least 1) |
 | `--warmup=INT` | `120` | Number of warmup frames |
 | `--width=INT` | `2560` | Window/render width |
 | `--height=INT` | `1440` | Window/render height |
 | `--vsync=0\|1` | `0` | Enable VSync |
+| `--gpu_sync=0\|1` | `0` | Both GL engines: wait for GPU completion before presentation |
 | `--opacity=FLOAT` | `1` | Strokebench only: stroke opacity from 0 to 1 |
 | `--output=PATH` | auto | Output JSON file path |
+
+Use the same `--gpu_sync` value for both engines in a GL comparison. With `0`,
+neither adapter requests an explicit GPU completion wait; with `1`, both call
+`glFinish()` after submission. The frame timer includes update, drawing, the
+configured wait, and presentation. Setup and event processing are excluded,
+and warmup frames never enter the reported statistics.
 
 ### Examples
 
