@@ -351,6 +351,11 @@ struct Window : bench::BenchmarkWindow {
     }
   }
 
+  bool pump_events(bool& running) override
+  {
+      return bench::pump_sdl_events(running);
+  }
+
   bool ready() override {
     SkCanvas *canvas = sk_canvas();
     if (!canvas || !example) {
