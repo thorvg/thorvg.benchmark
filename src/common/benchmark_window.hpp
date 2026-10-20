@@ -1,7 +1,5 @@
 #pragma once
 
-#include <SDL3/SDL.h>
-
 #include <cstdint>
 
 namespace bench {
@@ -17,26 +15,14 @@ struct BenchmarkWindow {
   // Update the scene for a given deterministic frame index.
   virtual bool update(uint32_t frame_index) = 0;
 
-  // Render the current scene (and block until rendering is finished if the
-  // backend requires explicit sync).
+  // Render the current scene with the backend's configured synchronization.
   virtual bool draw() = 0;
 
   // Present the rendered result to the window.
   virtual void refresh() = 0;
 
   // Process SDL events and set `running=false` to request exit.
-  virtual bool pump_events(bool &running) {
-    SDL_Event event;
-    while (SDL_PollEvent(&event)) {
-      if (event.type == SDL_EVENT_QUIT) {
-        running = false;
-      }
-      if (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_ESCAPE) {
-        running = false;
-      }
-    }
-    return running;
-  }
+  virtual bool pump_events(bool& running) = 0;
 
   // Pixel workload size (drawable/surface) used for metadata.
   virtual uint32_t surface_width() const = 0;

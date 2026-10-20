@@ -9,6 +9,17 @@
 
 namespace bench {
 
+inline bool pump_sdl_events(bool& running)
+{
+    SDL_Event event;
+    while (SDL_PollEvent(&event)) {
+        if (event.type == SDL_EVENT_QUIT || (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_ESCAPE)) {
+            running = false;
+        }
+    }
+    return running;
+}
+
 /// Result of HiDPI window adjustment
 struct WindowDimensions {
   int drawable_w;
