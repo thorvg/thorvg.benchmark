@@ -29,12 +29,10 @@ draw/synchronization, and presentation stay inside the timed interval. Failed
 or interrupted runs must return an error without publishing partial results.
 
 Adapter and factory tests compile selected, unchanged production method bodies
-against recording API substitutes. They check both engines' submission/wait/
+against recording API substitutes. They check both engines' submission and
 presentation order and option forwarding in all 16 factories. Source-line
 mapping attributes coverage to those method bodies; it does not measure the
-substituted engine APIs, graphics initialization, or hardware behavior. GL
-constructor initializers are also executed to check synchronization flag binding;
-their graphics setup bodies are excluded from CRAP scores.
+substituted engine APIs, graphics initialization, or hardware behavior.
 Use `-DBUILD_TESTING=OFF` to omit tests from a rendering benchmark build.
 
 For coverage, CRAP scores, and a selected mutation sample, use GCC and its
@@ -172,15 +170,11 @@ benchmark; its results are not directly comparable with those historical runs.
 | `--width=INT` | `2560` | Window/render width |
 | `--height=INT` | `1440` | Window/render height |
 | `--vsync=0\|1` | `0` | Enable VSync |
-| `--gpu_sync=0\|1` | `0` | Both GL engines: wait for GPU completion before presentation |
 | `--opacity=FLOAT` | `1` | Strokebench only: stroke opacity from 0 to 1 |
 | `--output=PATH` | auto | Output JSON file path |
 
-Use the same `--gpu_sync` value for both engines in a GL comparison. With `0`,
-neither adapter requests an explicit GPU completion wait; with `1`, both call
-`glFinish()` after submission. The frame timer includes update, drawing, the
-configured wait, and presentation. Setup and event processing are excluded,
-and warmup frames never enter the reported statistics.
+The frame timer includes update, drawing, and presentation. Setup and event
+processing are excluded, and warmup frames never enter the reported statistics.
 
 ### Examples
 

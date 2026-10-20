@@ -221,7 +221,6 @@ function(add_thorvg_benchmark NAME SOURCE)
             ${SDL3_LIBS}
             ${WGPU_LIBS}
             ${THORVG_FRAMEWORKS}
-            OpenGL::GL
     )
 
     if(RECTBENCH_BUILD_THORVG)

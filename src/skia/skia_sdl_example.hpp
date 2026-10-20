@@ -470,13 +470,9 @@ struct GlWindow final : Window {
   sk_sp<GrDirectContext> gr_context;
   sk_sp<SkSurface> surface;
 
-  bool gpu_sync = false;
-
   GlWindow(Example *example, uint32_t target_width, uint32_t target_height,
-           bool vsync, bool gpu_sync,
-           const std::string &window_title = "Benchmark")
-      : Window(example, target_width, target_height, window_title),
-        gpu_sync(gpu_sync) {
+           bool vsync, const std::string &window_title = "Benchmark")
+      : Window(example, target_width, target_height, window_title) {
     if (!initialized) {
       return;
     }
@@ -597,10 +593,6 @@ struct GlWindow final : Window {
     }
 
     skgpu::ganesh::FlushAndSubmit(surface.get());
-
-    if (gpu_sync) {
-      glFinish();
-    }
 
     return true;
   }
