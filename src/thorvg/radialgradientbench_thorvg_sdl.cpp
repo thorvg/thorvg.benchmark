@@ -121,9 +121,9 @@ make_window_with_example(const bench::CliOptions &opts) {
         "RadialGradientbench");
 
   case bench::Backend::GL:
-    return std::make_unique<bench::tvgexam::GlWindow>(
-        example.release(), opts.width, opts.height, opts.threads, opts.vsync,
-        "RadialGradientbench");
+      return std::make_unique<bench::tvgexam::GlWindow>(
+          example.release(), opts.width, opts.height, opts.threads, opts.vsync,
+          opts.gpu_sync, "RadialGradientbench");
 
   case bench::Backend::WebGPU:
     return std::make_unique<bench::tvgexam::WgWindow>(

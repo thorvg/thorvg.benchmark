@@ -9,6 +9,8 @@
 #include <thorvg.h>
 
 #include <SDL3/SDL.h>
+#define GL_SILENCE_DEPRECATION
+#include <SDL3/SDL_opengl.h>
 #ifdef __APPLE__
 #include <SDL3/SDL_metal.h>
 #endif
@@ -119,16 +121,7 @@ struct Window : bench::BenchmarkWindow {
   }
 
   bool pump_events(bool &running) override {
-    SDL_Event event;
-    while (SDL_PollEvent(&event)) {
-      if (event.type == SDL_EVENT_QUIT) {
-        running = false;
-      }
-      if (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_ESCAPE) {
-        running = false;
-      }
-    }
-    return running;
+      return bench::pump_sdl_events(running);
   }
 
   bool draw() override {
@@ -149,10 +142,11 @@ struct Window : bench::BenchmarkWindow {
     if (!example->content(canvas, width, height)) {
       return false;
     }
-    if (!verify(canvas->draw())) {
-      return false;
-    }
-    return verify(canvas->sync());
+    const bool clear = clearBuffer;
+    clearBuffer = false;
+    const bool result = draw();
+    clearBuffer = clear;
+    return result;
   }
 
   virtual void resize() {}
@@ -292,57 +286,59 @@ struct SwWindow final : Window {
 
 struct GlWindow final : Window {
   SDL_GLContext context = nullptr;
+  bool gpu_sync = false;
 
-  GlWindow(Example *example, uint32_t target_width, uint32_t target_height,
-           uint32_t threads_cnt, bool vsync,
-           const std::string &window_title = "Benchmark")
-      : Window(example, target_width, target_height, threads_cnt, window_title) {
-    if (!initialized) {
-      return;
-    }
+  GlWindow(Example* example, uint32_t target_width, uint32_t target_height,
+           uint32_t threads_cnt, bool vsync, bool gpu_sync,
+           const std::string& window_title = "Benchmark") :
+      Window(example, target_width, target_height, threads_cnt, window_title),
+      gpu_sync(gpu_sync)
+  {
+      if (!initialized) {
+          return;
+      }
 
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+      SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+      SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+      SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 
-    std::string title = window_title_ + " ThorVG (OpenGL)";
-    window = bench::create_centered_window(title.c_str(),
-                              static_cast<int>(target_width),
-                              static_cast<int>(target_height),
-                              SDL_WINDOW_OPENGL |
-                                  SDL_WINDOW_HIGH_PIXEL_DENSITY);
-    if (!window) {
-      std::cerr << "SDL_CreateWindow failed: " << SDL_GetError() << "\n";
-      return;
-    }
+      std::string title = window_title_ + " ThorVG (OpenGL)";
+      window = bench::create_centered_window(title.c_str(),
+                                             static_cast<int>(target_width),
+                                             static_cast<int>(target_height),
+                                             SDL_WINDOW_OPENGL | SDL_WINDOW_HIGH_PIXEL_DENSITY);
+      if (!window) {
+          std::cerr << "SDL_CreateWindow failed: " << SDL_GetError() << "\n";
+          return;
+      }
 
-    context = SDL_GL_CreateContext(window);
-    if (!context) {
-      std::cerr << "SDL_GL_CreateContext failed: " << SDL_GetError() << "\n";
-      return;
-    }
+      context = SDL_GL_CreateContext(window);
+      if (!context) {
+          std::cerr << "SDL_GL_CreateContext failed: " << SDL_GetError() << "\n";
+          return;
+      }
 
-    if (!SDL_GL_SetSwapInterval(vsync ? 1 : 0)) {
-      std::cerr << "Warning: Unable to set VSync: " << SDL_GetError() << "\n";
-    }
+      if (!SDL_GL_SetSwapInterval(vsync ? 1 : 0)) {
+          std::cerr << "Warning: Unable to set VSync: " << SDL_GetError() << "\n";
+      }
 
-    auto dims = bench::adjust_window_for_hidpi(window, target_width,
-                                                   target_height, true);
-    width = static_cast<uint32_t>(dims.drawable_w);
-    height = static_cast<uint32_t>(dims.drawable_h);
+      auto dims = bench::adjust_window_for_hidpi(window, target_width,
+                                                 target_height, true);
+      width = static_cast<uint32_t>(dims.drawable_w);
+      height = static_cast<uint32_t>(dims.drawable_h);
 
-    canvas = tvg::GlCanvas::gen();
-    if (!canvas) {
-      std::cerr << "GlCanvas is not supported. Did you enable the GlEngine?\n";
-      return;
-    }
+      canvas = tvg::GlCanvas::gen();
+      if (!canvas) {
+          std::cerr << "GlCanvas is not supported. Did you enable the GlEngine?\n";
+          return;
+      }
 
-    if (!verify(static_cast<tvg::GlCanvas *>(canvas)->target(
-            nullptr, nullptr, context, static_cast<int32_t>(0), static_cast<uint32_t>(width), static_cast<uint32_t>(height),
-            tvg::ColorSpace::ABGR8888S),
-                "Failed to set GlCanvas target")) {
-      return;
-    }
+      if (!verify(static_cast<tvg::GlCanvas*>(canvas)->target(
+                      nullptr, nullptr, context, static_cast<int32_t>(0), static_cast<uint32_t>(width), static_cast<uint32_t>(height),
+                      tvg::ColorSpace::ABGR8888S),
+                  "Failed to set GlCanvas target")) {
+          return;
+      }
   }
 
   ~GlWindow() override {
@@ -353,6 +349,17 @@ struct GlWindow final : Window {
       SDL_GL_DestroyContext(context);
       context = nullptr;
     }
+  }
+
+  bool draw() override
+  {
+      if (!Window::draw()) {
+          return false;
+      }
+      if (gpu_sync) {
+          glFinish();
+      }
+      return true;
   }
 
   void refresh() override {

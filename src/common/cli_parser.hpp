@@ -33,7 +33,7 @@ struct CliOptions {
   uint32_t width = 2560;             // Window/render width
   uint32_t height = 1440;            // Window/render height
   bool vsync = false;
-  bool gpu_sync = false;             // GL only: glFinish before stopping timer
+  bool gpu_sync = false;             // Both GL adapters: glFinish before stopping timer
   float opacity = 1.0f;              // Strokebench only: [0, 1]
   std::string output_path;           // Empty means auto-generate
   bool wgpu_external_device = false; // WebGPU: use external device
