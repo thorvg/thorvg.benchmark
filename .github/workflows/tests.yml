@@ -1,0 +1,38 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test-quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: tests/requirements-quality.txt
+      - name: Install quality tools
+        run: python -m pip install -r tests/requirements-quality.txt
+      - name: Configure tests without rendering dependencies
+        run: >-
+          cmake -S . -B build-tests -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_CXX_COMPILER=g++ -DRECTBENCH_BUILD_BENCHMARKS=OFF
+          -DBUILD_TESTING=ON -DRECTBENCH_TEST_COVERAGE=ON
+      - name: Build tests
+        run: cmake --build build-tests --parallel
+      - name: Tests, coverage, CRAP and selected mutations
+        run: python tests/quality.py --build-dir build-tests
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-quality
+          path: |
+            build-test-quality/report/*.json
+            build-test-quality/report/*.xml
+            build-test-quality/report/*.md
+            build-test-quality/report/*.log

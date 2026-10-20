@@ -1,3 +1,4 @@
 build*/
 results*
 .cache*
+__pycache__/
