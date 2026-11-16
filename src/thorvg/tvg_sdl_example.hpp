@@ -602,7 +602,7 @@ struct WgWindow final : Window {
 
   void refresh() override { wgpu.present(); }
 
-  const char *backend_id() const override { return "webgpu"; }
+  const char *backend_id() const override { return "wg"; }
   const char *backend_title() const override { return "WebGPU"; }
 };
 

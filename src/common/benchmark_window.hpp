@@ -31,7 +31,7 @@ struct BenchmarkWindow {
   // For output/printing.
   virtual const char *engine_id() const = 0;     // e.g. "skia", "thorvg"
   virtual const char *engine_title() const = 0;  // e.g. "Skia", "ThorVG"
-  virtual const char *backend_id() const = 0;    // e.g. "cpu", "gl", "webgpu"
+  virtual const char *backend_id() const = 0;    // e.g. "cpu", "gl", "wg"
   virtual const char *backend_title() const = 0; // e.g. "CPU", "OpenGL"
 };
 

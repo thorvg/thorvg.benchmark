@@ -126,7 +126,7 @@ def _variants(
 ) -> list[Variant]:
     supported_backends = {
         "skia": {"cpu", "gl"},
-        "thorvg": {"cpu", "gl", "webgpu"},
+        "thorvg": {"cpu", "gl", "wg"},
     }
     known_backends: set[str] = set().union(*supported_backends.values())
 
@@ -218,7 +218,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument(
         "--backends",
         default="cpu,gl",
-        help="Comma-separated backends to run (or 'all'; thorvg also supports webgpu)",
+        help="Comma-separated backends to run (or 'all'; thorvg also supports wg)",
     )
     parser.add_argument(
         "--scenes",
@@ -286,7 +286,7 @@ def main(argv: list[str]) -> int:
     ALL_BENCHS = ["rect", "circle", "stroke", "image", "multiimage", "lineargradient", "radialgradient"]
     benchmarks_list = _expand_all(benchmarks_list, ALL_BENCHS)
     engines = _expand_all(engines, ["skia", "thorvg"])
-    backends = _expand_all(backends, ["cpu", "gl", "webgpu"])
+    backends = _expand_all(backends, ["cpu", "gl", "wg"])
     scenes = _expand_all(scenes, ["default", "rotation"])
 
     bin_src = Path(args.bin_dir if args.bin_dir else args.build_dir)

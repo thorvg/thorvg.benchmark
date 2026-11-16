@@ -12,7 +12,7 @@ namespace bench {
 /// Metadata for benchmark results
 struct BenchmarkMetadata {
   std::string engine;  // "skia" or "thorvg"
-  std::string backend; // "cpu", "gl", "webgpu"
+  std::string backend; // "cpu", "gl", "wg"
   uint64_t seed = 12345;
   uint32_t rect_count = 5000;
   uint32_t width = 2560;

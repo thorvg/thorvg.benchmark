@@ -97,11 +97,11 @@ class RunAllTests(unittest.TestCase):
 
     def test_supported_matrix_and_legacy_binary_names(self):
         variants = run_all._variants(self.bin_dir, ["RectBench"], ["SKIA", "THORVG"],
-                                     ["CPU", "GL", "WEBGPU"], ["DEFAULT", "ROTATION"])
+                                     ["CPU", "GL", "WG"], ["DEFAULT", "ROTATION"])
         self.assertEqual(len(variants), 10)
         self.assertEqual({(v.engine, v.backend) for v in variants},
                          {("skia", "cpu"), ("skia", "gl"), ("thorvg", "cpu"),
-                          ("thorvg", "gl"), ("thorvg", "webgpu")})
+                          ("thorvg", "gl"), ("thorvg", "wg")})
         self.assertEqual({v.scene for v in variants}, {"default", "rotation"})
         for v in variants:
             self.assertEqual(v.benchmark, "rectbench")
@@ -203,7 +203,7 @@ class RunAllTests(unittest.TestCase):
             with self.subTest(extra=extra), self.assertRaises(SystemExit) as error:
                 invoke(run_all, self.args + extra)
             self.assertEqual(error.exception.code, 2)
-        code, _, stderr = invoke(run_all, self.args + ["--engines", "skia", "--backends", "webgpu"])
+        code, _, stderr = invoke(run_all, self.args + ["--engines", "skia", "--backends", "wg"])
         self.assertEqual(code, 2)
         self.assertIn("No variants", stderr)
         code, _, stderr = invoke(run_all, self.args + ["--bin-dir", str(self.root / "absent")])
@@ -328,7 +328,7 @@ class ResultToolsTests(unittest.TestCase):
         self.assertIn("Directory not found", stderr)
 
     def test_report_columns_grouping_order_missing_values_and_rounding(self):
-        rows = [variant("stroke", "rotation", "thorvg", "webgpu", 99.126),
+        rows = [variant("stroke", "rotation", "thorvg", "wg", 99.126),
                 variant("rect", "rotation", "thorvg", "gl", 4),
                 variant("rect", "default", "thorvg", "cpu", 3),
                 variant("rect", "default", "skia", "gl", 2),

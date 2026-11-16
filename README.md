@@ -162,7 +162,7 @@ benchmark; its results are not directly comparable with those historical runs.
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--backend=cpu\|gl\|webgpu` | `cpu` | Rendering backend |
+| `--backend=cpu\|gl\|wg` | `cpu` | Rendering backend |
 | `--scene=default\|rotation` | `default` | Scene mode (rotation adds per-frame rotation) |
 | `--seed=INT` | `12345` | RNG seed for deterministic output |
 | `--frames=INT` | `1000` | Number of measured frames (at least 1) |
@@ -223,7 +223,7 @@ python3 tools/run_all.py --seed=42 --runs 3
 | `--runs N` | `3` | Number of runs per variant |
 | `--benchmarks=...` | all | Comma-separated: `rect,circle,stroke,image,multiimage,lineargradient,radialgradient` |
 | `--engines=...` | `skia,thorvg` | Engines to test |
-| `--backends=...` | `cpu,gl` | Backends: `cpu`, `gl`, `webgpu` (ThorVG only) |
+| `--backends=...` | `cpu,gl` | Backends: `cpu`, `gl`, `wg` (ThorVG only) |
 | `--scenes=...` | `default,rotation` | Scene modes |
 | `--build` | off | Build with CMake before running |
 | `--seed N` | - | Fixed seed for ALL runs (use for measuring variance with identical input) |

@@ -29,7 +29,7 @@
   {"id":"python-population-deviation","file":"tools/run_all.py","before":"statistics.stdev(values)","after":"statistics.pstdev(values)"},
   {"id":"python-fixed-zero-seed","file":"tools/run_all.py","before":"if fixed_seed is not None:","after":"if fixed_seed:"},
   {"id":"python-seed-mask","file":"tools/run_all.py","before":"return (z ^ (z >> 31)) & 0xFFFFFFFFFFFFFFFF","after":"return (z ^ (z >> 30)) & 0xFFFFFFFFFFFFFFFF"},
-  {"id":"python-skia-webgpu","file":"tools/run_all.py","before":"\"skia\": {\"cpu\", \"gl\"}","after":"\"skia\": {\"cpu\", \"gl\", \"webgpu\"}"},
+  {"id":"python-skia-webgpu","file":"tools/run_all.py","before":"\"skia\": {\"cpu\", \"gl\"}","after":"\"skia\": {\"cpu\", \"gl\", \"wg\"}"},
   {"id":"python-thorvg-binary","file":"tools/run_all.py","before":"binary_engine = \"tvg\" if engine == \"thorvg\" else engine","after":"binary_engine = engine"},
   {"id":"python-conflicting-output","file":"tools/run_all.py","before":"keys={\"seed\", \"output\"}","after":"keys={\"seed\"}"},
   {"id":"python-failed-run-success","file":"tools/run_all.py","before":"return proc.returncode\n\n            if not out_json.exists():","after":"return 0\n\n            if not out_json.exists():"},

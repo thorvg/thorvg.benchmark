@@ -98,7 +98,7 @@ inline bool is_max_token(const std::string &value) {
 inline void print_usage(const char *program_name) {
   std::cout << "Usage: " << program_name << " [options]\n"
             << "\nOptions:\n"
-            << "  --backend=cpu|gl|webgpu   Rendering backend (default: cpu)\n"
+            << "  --backend=cpu|gl|wg   Rendering backend (default: cpu)\n"
             << "  --scene=default|rotation\n"
             << "                            Scene mode (default: default)\n"
             << "                              default: reuse shapes with per-frame translation + scale\n"
@@ -143,7 +143,7 @@ inline CliOptions parse_cli(int argc, char *argv[]) {
         opts.backend = Backend::CPU;
       } else if (str_val == "gl") {
         opts.backend = Backend::GL;
-      } else if (str_val == "webgpu") {
+      } else if (str_val == "wg") {
         opts.backend = Backend::WebGPU;
       } else {
         opts.valid = false;
@@ -216,7 +216,7 @@ inline const char *backend_name(Backend b) {
   case Backend::GL:
     return "gl";
   case Backend::WebGPU:
-    return "webgpu";
+    return "wg";
   }
   return "unknown";
 }

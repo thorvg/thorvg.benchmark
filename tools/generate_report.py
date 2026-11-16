@@ -51,7 +51,7 @@ def main():
         ("Skia GL", "skia", "gl"),
         ("ThorVG CPU", "thorvg", "cpu"),
         ("ThorVG GL", "thorvg", "gl"),
-        ("ThorVG WebGPU", "thorvg", "webgpu"),
+        ("ThorVG WebGPU", "thorvg", "wg"),
     ]
 
     # Organize data: dict[(bench, scene)] -> dict[(engine, backend)] -> fps
