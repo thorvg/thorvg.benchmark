@@ -6,6 +6,8 @@
 
 #include "test_support.hpp"
 #include "circle_generator.hpp"
+#include "blend_workload.hpp"
+#include "cli_parser.hpp"
 #include "designer_stroke_generator.hpp"
 #include "multi_image_layout.hpp"
 #include "rect_generator.hpp"
@@ -434,10 +436,30 @@ void test_designer_strokes()
     CHECK(bench::path_y(positioned, 1.0f) == 16.0f);
 }
 
+void test_blend()
+{
+    const auto squares = bench::generate_blend_squares(12345, {});
+    const auto repeated = bench::generate_blend_squares(12345, {});
+    CHECK(squares.size() == 4250);
+    std::array<size_t, 17> mode_counts{};
+    for (size_t i = 0; i < squares.size(); ++i) {
+        ++mode_counts[bench::blend_mode_index(i)];
+        CHECK(squares[i].w == squares[i].h);
+        CHECK(squares[i].a >= 64);
+        check_rect(squares[i], repeated[i]);
+    }
+    for (auto count : mode_counts) CHECK(count == 250);
+    char program[] = "blend_test";
+    char removed_option[] = "--blend=multiply";
+    char *args[] = {program, removed_option};
+    CHECK(!bench::parse_cli(2, args).valid);
+}
+
 }  // namespace
 
 int main()
 {
+    test_blend();
     test_stats();
     test_rng();
     test_rectangles();
