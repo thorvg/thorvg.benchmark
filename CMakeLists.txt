@@ -233,6 +233,7 @@ endfunction()
 # Skia Benchmarks
 # =============================================================================
 
+add_skia_benchmark(blend_skia_sdl          src/skia/blend_skia_sdl.cpp)
 add_skia_benchmark(rect_skia_sdl           src/skia/rectbench_skia_sdl.cpp)
 add_skia_benchmark(circle_skia_sdl         src/skia/circlebench_skia_sdl.cpp)
 add_skia_benchmark(stroke_skia_sdl         src/skia/strokebench_skia_sdl.cpp)
@@ -246,6 +247,7 @@ add_skia_benchmark(strokerect_skia_sdl     src/skia/strokerectbench_skia_sdl.cpp
 # ThorVG Benchmarks
 # =============================================================================
 
+add_thorvg_benchmark(blend_tvg_sdl          src/thorvg/blend_thorvg_sdl.cpp)
 add_thorvg_benchmark(rect_tvg_sdl           src/thorvg/rectbench_thorvg_sdl.cpp)
 add_thorvg_benchmark(circle_tvg_sdl         src/thorvg/circlebench_thorvg_sdl.cpp)
 add_thorvg_benchmark(stroke_tvg_sdl         src/thorvg/strokebench_thorvg_sdl.cpp)
