@@ -128,7 +128,7 @@ make_window_with_example(const bench::CliOptions &opts) {
   case bench::Backend::WebGPU:
     return std::make_unique<bench::tvgexam::WgWindow>(
         example.release(), opts.width, opts.height, opts.threads,
-        opts.wgpu_external_device, "RadialGradientbench");
+        "RadialGradientbench");
   }
 
   return nullptr;

@@ -35,7 +35,6 @@ struct CliOptions {
   bool vsync = false;
   float opacity = 1.0f;              // Strokebench only: [0, 1]
   std::string output_path;           // Empty means auto-generate
-  bool wgpu_external_device = false; // WebGPU: use external device
 
   // Validation
   bool valid = true;
@@ -116,8 +115,6 @@ inline void print_usage(const char *program_name) {
                "(default: 1)\n"
             << "  --output=PATH             Output JSON path (default: "
                "auto-generated)\n"
-            << "  --wgpu_external_device=0|1  WebGPU: use external device "
-               "(default: 0)\n"
             << "  --help                    Show this help message\n";
 }
 
@@ -197,8 +194,6 @@ inline CliOptions parse_cli(int argc, char *argv[]) {
       }
     } else if (parse_key_value(arg, "--output", str_val)) {
       opts.output_path = str_val;
-    } else if (parse_key_value(arg, "--wgpu_external_device", bool_val)) {
-      opts.wgpu_external_device = bool_val;
     } else {
       opts.valid = false;
       opts.error_message = std::string("Unknown option: ") + arg;
