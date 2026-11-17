@@ -369,8 +369,7 @@ struct WgpuContext {
   SDL_MetalView metalView = nullptr;
 #endif
 
-  bool init(SDL_Window *window, uint32_t width, uint32_t height,
-            bool use_external_device) {
+  bool init(SDL_Window *window, uint32_t width, uint32_t height) {
     WGPUInstanceDescriptor instanceDesc = {};
     instance = wgpuCreateInstance(&instanceDesc);
     if (!instance) {
@@ -407,11 +406,6 @@ struct WgpuContext {
     if (!surface) {
       std::cerr << "Failed to create WGPUSurface\n";
       return false;
-    }
-
-    // For external device mode, ThorVG owns adapter/device/surface configuration.
-    if (use_external_device) {
-      return true;
     }
 
     WGPURequestAdapterOptions adapterOpts = {};
@@ -533,13 +527,11 @@ struct WgpuContext {
 
 struct WgWindow final : Window {
   WgpuContext wgpu;
-  bool use_external_device = false;
 
   WgWindow(Example *example, uint32_t target_width, uint32_t target_height,
-           uint32_t threads_cnt, bool use_external_device,
+           uint32_t threads_cnt,
            const std::string &window_title = "Benchmark")
-      : Window(example, target_width, target_height, threads_cnt, window_title),
-        use_external_device(use_external_device) {
+      : Window(example, target_width, target_height, threads_cnt, window_title) {
     if (!initialized) {
       return;
     }
@@ -574,7 +566,10 @@ struct WgWindow final : Window {
     width = static_cast<uint32_t>(drawable_w);
     height = static_cast<uint32_t>(drawable_h);
 
-    if (!wgpu.init(window, width, height, use_external_device)) {
+    // Apply window creation and HiDPI resize events before acquiring a surface texture.
+    SDL_PumpEvents();
+
+    if (!wgpu.init(window, width, height)) {
       std::cerr << "Failed to initialize WebGPU context\n";
       return;
     }
@@ -586,7 +581,7 @@ struct WgWindow final : Window {
     }
 
     if (!verify(static_cast<tvg::WgCanvas *>(canvas)->target(
-            use_external_device ? nullptr : wgpu.device, wgpu.instance,
+            wgpu.device, wgpu.instance,
             wgpu.surface, static_cast<uint32_t>(width), static_cast<uint32_t>(height),
             tvg::ColorSpace::ABGR8888S, 0),
                 "Failed to set WgCanvas target")) {
